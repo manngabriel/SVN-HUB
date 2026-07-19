@@ -2559,6 +2559,27 @@ th.num{text-align:right;}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 </head>
 <body>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+  const SUPABASE_URL = 'https://qevblxazhhktmtvzqgzi.supabase.co';
+  const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFldmJseGF6aGhrdG10dnpxZ3ppIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MTk5NDU1NTMsImV4cCI6MTkzNTUyMTU1M30.U3v-PmON_5vJJJYf9vqAB_Jmq4ZQRxO0Bk8V7RbNfqU';
+  
+  const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  
+  async function checkAuth() {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      window.location.href = 'login.html';
+    }
+  }
+  
+  checkAuth();
+  
+  async function logout() {
+    await supabase.auth.signOut();
+    window.location.href = 'login.html';
+  }
+</script>
 <div class="app">
 <datalist id="clienteList"></datalist>
 
@@ -2588,6 +2609,7 @@ th.num{text-align:right;}
     <div class="mini-btns">
       <button class="mini-btn" onclick="exportarDados()">Exportar</button>
       <button class="mini-btn" onclick="document.getElementById('importFile').click()">Importar</button>
+      <button class="mini-btn" onclick="logout()" style="color:#a4552e;">Sair</button>
     </div>
     <input type="file" id="importFile" accept=".json" style="display:none" onchange="importarDados(event)">
     <div>Dados salvos localmente neste navegador.</div>
