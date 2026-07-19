@@ -1,5 +1,3 @@
 {
-  "buildCommand": "npm run build || echo 'No build'",
-  "outputDirectory": ".",
-  "public": false
+  "outputDirectory": "public"
 }
