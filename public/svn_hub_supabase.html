@@ -2559,27 +2559,6 @@ th.num{text-align:right;}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 </head>
 <body>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script>
-  const SUPABASE_URL = 'https://qevblxazhhktmtvzqgzi.supabase.co';
-  const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFldmJseGF6aGhrdG10dnpxZ3ppIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQzMDM0MTksImV4cCI6MjA5OTg3OTQxOX0.VH3O0hKxgYR1cHIUAbUdK4CIOxNacrY-J2MEVVTPKlM';
-  
-  const sbAuthClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-  
-  async function checkAuth() {
-    const { data: { user } } = await sbAuthClient.auth.getUser();
-    if (!user) {
-      window.location.href = 'login.html';
-    }
-  }
-  
-  checkAuth();
-  
-  async function logout() {
-    await sbAuthClient.auth.signOut();
-    window.location.href = 'login.html';
-  }
-</script>
 <div class="app">
 <datalist id="clienteList"></datalist>
 
@@ -2609,7 +2588,6 @@ th.num{text-align:right;}
     <div class="mini-btns">
       <button class="mini-btn" onclick="exportarDados()">Exportar</button>
       <button class="mini-btn" onclick="document.getElementById('importFile').click()">Importar</button>
-      <button class="mini-btn" onclick="logout()" style="color:#a4552e;">Sair</button>
     </div>
     <input type="file" id="importFile" accept=".json" style="display:none" onchange="importarDados(event)">
     <div>Dados salvos localmente neste navegador.</div>
@@ -3588,7 +3566,10 @@ th.num{text-align:right;}
 
       <div class="card tint" id="scClienteBar" style="display:none;">
         <span id="scClienteBarTxt"></span>
-        <button class="btn sm" onclick="scCarregarSimulacaoCliente()">Carregar simulação salva</button>
+        <div style="display:flex; gap:8px;">
+          <button class="btn sm ghost" id="scBtnDiversificador" onclick="scCarregarDiversificador()">📊 Carregar ativos do Diversificador</button>
+          <button class="btn sm" id="scBtnSimSalva" style="display:none;" onclick="scCarregarSimulacaoCliente()">Carregar simulação salva</button>
+        </div>
       </div>
 
       <div class="card" id="scIndicadoresCard">
@@ -4713,6 +4694,27 @@ th.num{text-align:right;}
       <div id="positivadorClientesCount" style="font-size:13px; color:var(--ink-soft); margin-bottom:12px;">Carregando...</div>
       <div id="positivadorClientesTable"></div>
     </div>
+    <div class="card">
+      <h2>Upload Diversificação</h2>
+      <div class="desc">Selecione o Excel de Diversificação (ativos por cliente). Cada ativo é classificado por classe automaticamente e fica disponível no Simulador de Carteira para montar realocações.</div>
+      <div style="margin-top:14px;">
+        <input type="file" id="diversificacaoFile" accept=".xlsx,.xls" style="display:none" onchange="diversificacaoHandleFile(event)">
+        <button class="btn solid" onclick="document.getElementById('diversificacaoFile').click()">Selecionar arquivo Excel</button>
+        <span id="diversificacaoFileName" style="margin-left:12px; color:var(--ink-soft); font-size:13px;"></span>
+      </div>
+      <div id="diversificacaoStatus" style="margin-top:12px; padding:10px; border-radius:9px; display:none; font-size:13px;"></div>
+      <div style="margin-top:12px; display:none;" id="diversificacaoActions">
+        <div style="margin-bottom:10px; font-size:13px; color:var(--ink-soft);" id="diversificacaoPreviewDesc"></div>
+        <div id="diversificacaoPreview" style="max-height:260px; overflow-y:auto; margin-bottom:14px;"></div>
+        <div style="display:flex; gap:10px; align-items:center;">
+          <button class="btn solid" id="diversificacaoImportBtn" onclick="diversificacaoImportar()">Importar ativos</button>
+          <span id="diversificacaoProgress" style="font-size:12px; color:var(--ink-soft);"></span>
+        </div>
+        <div style="margin-top:8px; height:6px; background:var(--line); border-radius:3px; overflow:hidden; display:none;" id="diversificacaoBar">
+          <div id="diversificacaoFill" style="height:100%; background:var(--amber); width:0%; transition:width .3s;"></div>
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- ================= FERRAMENTA (conteúdo aberto pelo menu) ================= -->
@@ -4840,21 +4842,21 @@ function ensureMes(m){ if(!S.meses[m]) S.meses[m] = metasVazias(); return S.mese
 // ============================================================
 // SUPABASE CONFIG
 // ============================================================
+const SB_URL = 'https://qevblxazhhktmtvzqgzi.supabase.co';
+const SB_KEY = 'sb_publishable_0wB-Xd4JW_OpL_38K_PmzA_qEZfCuLt';
 
-async function sbGet(table, query = '') {
-  const res = await fetch('/api/supabase-proxy', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ table, query, method: 'GET' })
+async function sbGet(table, query=''){
+  const res = await fetch(`${SB_URL}/rest/v1/${table}${query}`, {
+    headers: { 'apikey': SB_KEY, 'Content-Type': 'application/json' }
   });
+  if(!res.ok) return null;
   return res.json();
-
 }
 async function sbUpsert(table, data){
-  const res = await fetch('/api/supabase-proxy', {
+  const res = await fetch(`${SB_URL}/rest/v1/${table}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ table, method: 'POST', body: data })
+    headers: { 'apikey': SB_KEY, 'Content-Type': 'application/json', 'Prefer': 'resolution=merge-duplicates,return=minimal' },
+    body: JSON.stringify(data)
   });
   return res.ok;
 }
@@ -7565,14 +7567,48 @@ function scSelecionarCliente(id){
 function scAtualizarClienteBar(){
   const bar = document.getElementById('scClienteBar');
   const c = scClienteAtual();
-  if(c && c.simCarteira){
+  const btnSim = document.getElementById('scBtnSimSalva');
+  if(!c){ bar.style.display = 'none'; return; }
+  const info = [];
+  if(c.suitability) info.push('Suitability: '+c.suitability);
+  if(c.termoQualificado === 'S') info.push('Investidor Qualificado');
+  if(c.aplicacaoFinanceira) info.push('Aplicação declarada: '+fmt(c.aplicacaoFinanceira));
+  let txt = info.join(' · ');
+  if(c.simCarteira){
     const d = new Date(c.simCarteira.atualizadoEm);
-    document.getElementById('scClienteBarTxt').textContent = `${c.nome} tem uma simulação salva em ${d.toLocaleDateString('pt-BR')} às ${d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}.`;
-    bar.style.display = 'flex';
-    bar.style.justifyContent = 'space-between';
-    bar.style.alignItems = 'center';
+    txt += (txt?' · ':'') + `simulação salva em ${d.toLocaleDateString('pt-BR')} às ${d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}`;
+    btnSim.style.display = 'inline-block';
   } else {
-    bar.style.display = 'none';
+    btnSim.style.display = 'none';
+  }
+  document.getElementById('scClienteBarTxt').textContent = txt || '—';
+  bar.style.display = 'flex';
+  bar.style.justifyContent = 'space-between';
+  bar.style.alignItems = 'center';
+}
+async function scCarregarDiversificador(){
+  const c = scClienteAtual();
+  if(!c){ alert('Selecione um cliente primeiro.'); return; }
+  if(!c.codigo){ alert('Esse cliente não tem código do Positivador vinculado — não dá pra cruzar com o Diversificador.'); return; }
+  try{
+    const rows = await sbGet('ativos_clientes', `?cliente=eq.${encodeURIComponent(c.codigo)}&order=net.desc`);
+    if(!rows || !rows.length){
+      alert('Nenhum ativo encontrado no Diversificador para '+c.nome+'. Confira se o arquivo de Diversificação já foi importado em "Upload Positivador".');
+      return;
+    }
+    if(scState.carteira.length && !confirm(`Isso vai substituir a carteira atual (${scState.carteira.length} ativo(s)) pelos ${rows.length} ativo(s) do Diversificador. Continuar?`)) return;
+    scState.carteira = rows.map(r => ({
+      id: scUid(),
+      nome: r.ativo || r.sub_produto || r.produto || 'Ativo',
+      classe: r.classe || classificarAtivoDiversificacao(r.produto, r.sub_produto),
+      indexador: 'Não informado',
+      parametro: 0,
+      valor: +r.net || 0
+    }));
+    scRenderAll(true);
+  }catch(e){
+    console.error(e);
+    alert('Erro ao carregar ativos do Diversificador.');
   }
 }
 function scCarregarSimulacaoCliente(){
@@ -9211,6 +9247,157 @@ const POS_FIELD_MAP = {
 
 let _positivadorRows = [];
 
+// ============================================================
+// DIVERSIFICAÇÃO — Upload e sync com Supabase (ativos por cliente)
+// ============================================================
+const DIV_FIELD_MAP = {
+  'Cliente':'cliente','Produto':'produto','Sub Produto':'sub_produto','CNPJ Fundo':'cnpj_fundo',
+  'Ativo':'ativo','Emissor':'emissor','Data de Vencimento':'data_vencimento','Quantidade':'quantidade',
+  'NET':'net','Data':'data_atualizacao'
+};
+
+// Classifica cada ativo do Diversificador nas mesmas classes usadas no Simulador de Carteira (scClasses)
+function classificarAtivoDiversificacao(produto, subProduto){
+  const p = (produto||'').trim();
+  const s = (subProduto||'').trim();
+  if(p==='Renda Variável'){
+    if(s==='Fundo Imobiliário') return 'Fundos Imobiliários';
+    return 'Renda Variável';
+  }
+  if(p==='Renda Fixa') return s==='Produto Estruturado' ? 'Estruturado / COE' : 'Renda Fixa';
+  if(p==='Tesouro Direto') return 'Renda Fixa';
+  if(p==='Fundos'){
+    if(s==='FIP') return 'Private Equity';
+    if(s==='Multimercado') return 'Multimercado';
+    if(s==='Renda Fixa') return 'Renda Fixa';
+    if(s==='Ações') return 'Renda Variável';
+    return 'Outros';
+  }
+  if(p==='Somente Financeiro') return 'Caixa / Liquidez';
+  if(p==='Previdência') return 'Previdência';
+  return 'Outros';
+}
+
+let _diversificacaoRows = [];
+
+function diversificacaoSetStatus(msg, type){
+  const el = document.getElementById('diversificacaoStatus');
+  el.style.display = 'block';
+  el.textContent = msg;
+  el.style.background = type==='ok'?'#e8f5e9':type==='erro'?'#ffebee':'#e3f2fd';
+  el.style.color = type==='ok'?'#2e7d32':type==='erro'?'#c62828':'#1565c0';
+}
+
+function diversificacaoHandleFile(e){
+  const file = e.target.files[0];
+  if(!file) return;
+  document.getElementById('diversificacaoFileName').textContent = file.name;
+  diversificacaoSetStatus('Lendo arquivo...', 'info');
+  const reader = new FileReader();
+  reader.onload = function(ev){
+    try{
+      const wb = XLSX.read(ev.target.result, {type:'binary'});
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const json = XLSX.utils.sheet_to_json(ws);
+      function excelDateToISO(serial){
+        if(!serial || isNaN(serial)) return null;
+        const d = new Date(Math.round((serial - 25569) * 86400 * 1000));
+        return d.toISOString().split('T')[0];
+      }
+      _diversificacaoRows = json.map(row => {
+        const mapped = {};
+        Object.entries(DIV_FIELD_MAP).forEach(([col, db]) => {
+          let v = row[col];
+          if(v === null || v === undefined || v === ''){ mapped[db] = null; return; }
+          if(db === 'data_vencimento' || db === 'data_atualizacao'){
+            if(typeof v === 'number') mapped[db] = excelDateToISO(v);
+            else mapped[db] = String(v).split(' ')[0] || null;
+            return;
+          }
+          if(typeof v === 'number'){ mapped[db] = v; return; }
+          if(!isNaN(v) && v !== ''){ mapped[db] = parseFloat(v); return; }
+          mapped[db] = v;
+        });
+        mapped.classe = classificarAtivoDiversificacao(mapped.produto, mapped.sub_produto);
+        return mapped;
+      }).filter(r => r.cliente);
+      diversificacaoSetStatus(`${_diversificacaoRows.length} ativos encontrados no arquivo.`, 'ok');
+      diversificacaoMostrarPreview();
+      document.getElementById('diversificacaoActions').style.display = 'block';
+    }catch(err){
+      diversificacaoSetStatus('Erro ao ler arquivo: ' + err.message, 'erro');
+    }
+  };
+  reader.readAsBinaryString(file);
+}
+
+function diversificacaoMostrarPreview(){
+  const desc = document.getElementById('diversificacaoPreviewDesc');
+  const prev = document.getElementById('diversificacaoPreview');
+  desc.textContent = `Prévia — primeiros 5 de ${_diversificacaoRows.length} ativos:`;
+  let html = '<table style="width:100%;font-size:12px;border-collapse:collapse;">';
+  html += '<tr style="border-bottom:1px solid var(--line);"><th style="text-align:left;padding:5px 8px;">Cliente</th><th style="text-align:left;padding:5px 8px;">Ativo</th><th style="text-align:left;padding:5px 8px;">Classe</th><th style="text-align:right;padding:5px 8px;">NET</th></tr>';
+  _diversificacaoRows.slice(0,5).forEach(r=>{
+    html += `<tr style="border-bottom:1px solid var(--cream-2);">
+      <td style="padding:5px 8px;">${r.cliente||'-'}</td>
+      <td style="padding:5px 8px;">${r.ativo||r.sub_produto||'-'}</td>
+      <td style="padding:5px 8px;">${r.classe||'-'}</td>
+      <td style="padding:5px 8px;text-align:right;">${r.net!=null?'R$ '+parseFloat(r.net).toLocaleString('pt-BR'):'-'}</td>
+    </tr>`;
+  });
+  html += '</table>';
+  prev.innerHTML = html;
+}
+
+async function diversificacaoImportar(){
+  if(!_diversificacaoRows.length) return;
+  const btn = document.getElementById('diversificacaoImportBtn');
+  const prog = document.getElementById('diversificacaoProgress');
+  const bar = document.getElementById('diversificacaoBar');
+  const fill = document.getElementById('diversificacaoFill');
+  btn.disabled = true;
+  bar.style.display = 'block';
+  diversificacaoSetStatus('Importando...', 'info');
+
+  // Remove ativos antigos dos clientes que estão sendo reimportados, pra não duplicar
+  const clientesNoArquivo = [...new Set(_diversificacaoRows.map(r => String(r.cliente)))];
+  try{
+    await fetch(`${SB_URL}/rest/v1/ativos_clientes?cliente=in.(${clientesNoArquivo.join(',')})`, {
+      method: 'DELETE',
+      headers: { 'apikey': SB_KEY, 'Content-Type': 'application/json' }
+    });
+  }catch(e){ console.warn('Falha ao limpar ativos antigos', e); }
+
+  let ok = 0, err = 0;
+  const total = _diversificacaoRows.length;
+  const BATCH = 50;
+
+  for(let i = 0; i < total; i += BATCH){
+    const batch = _diversificacaoRows.slice(i, i + BATCH);
+    try{
+      const res = await fetch(`${SB_URL}/rest/v1/ativos_clientes`, {
+        method: 'POST',
+        headers: { 'apikey': SB_KEY, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+        body: JSON.stringify(batch)
+      });
+      if(res.ok){ ok += batch.length; }
+      else {
+        const errBody = await res.text();
+        console.error('Supabase erro:', res.status, errBody);
+        if(err === 0) diversificacaoSetStatus('Erro Supabase: ' + errBody, 'erro');
+        err += batch.length;
+      }
+    }catch(e){ console.error('Fetch erro:', e); err += batch.length; }
+
+    const pct = Math.round(((i + batch.length) / total) * 100);
+    fill.style.width = pct + '%';
+    prog.textContent = `${Math.min(i + BATCH, total)} / ${total}`;
+  }
+
+  btn.disabled = false;
+  diversificacaoSetStatus(`Concluído! ${ok} ativos importados, ${err} erros.`, ok > 0 ? 'ok' : 'erro');
+}
+
 function positivadorSetStatus(msg, type){
   const el = document.getElementById('positivadorStatus');
   el.style.display = 'block';
@@ -9301,10 +9488,14 @@ async function positivadorImportar(){
   for(let i = 0; i < total; i += BATCH){
     const batch = _positivadorRows.slice(i, i + BATCH);
     try{
-      const res = await fetch('/api/supabase-proxy', {
+      const res = await fetch(`${SB_URL}/rest/v1/clientes`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ table: 'clientes', method: 'POST', body: batch })
+        headers: {
+          'apikey': SB_KEY,
+          'Content-Type': 'application/json',
+          'Prefer': 'resolution=merge-duplicates,return=minimal'
+        },
+        body: JSON.stringify(batch)
       });
       if(res.ok){ ok += batch.length; }
       else {
@@ -9335,11 +9526,21 @@ function positivadorSincronizarBase(){
     const nome = CODIGO_NOME[id] || `Cliente ${id}`;
     const custodia = parseFloat(row.net_em_m) || 0;
     const receita = parseFloat(row.receita_no_mes) || 0;
+    const captacaoLiquida = parseFloat(row.captacao_liquida_em_m) || 0;
+    const suitability = row.suitability || '';
+    const termoQualificado = row.termo_qualificado || '';
+    const dataNascimento = row.data_nascimento || '';
+    const aplicacaoFinanceira = parseFloat(row.aplicacao_financeira_declarada) || 0;
     const existe = S.clientes.find(c => c.codigo === id);
     if(existe){
       // Atualiza custódia e receita do cliente já existente
       existe.custodia = custodia;
       existe.receita = receita;
+      existe.captacaoLiquida = captacaoLiquida;
+      existe.suitability = suitability;
+      existe.termoQualificado = termoQualificado;
+      existe.dataNascimento = dataNascimento;
+      existe.aplicacaoFinanceira = aplicacaoFinanceira;
       if(nome && nome !== `Cliente ${id}`) existe.nome = nome;
     } else {
       // Cria novo cliente na base
@@ -9352,7 +9553,8 @@ function positivadorSincronizarBase(){
         tier: '3',
         reuniao: false,
         oportunidade: '',
-        notas: ''
+        notas: '',
+        captacaoLiquida, suitability, termoQualificado, dataNascimento, aplicacaoFinanceira
       });
     }
   });
