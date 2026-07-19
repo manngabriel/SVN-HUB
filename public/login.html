@@ -126,11 +126,10 @@
     const SUPABASE_URL = 'https://qevblxazhhktmtvzqgzi.supabase.co';
     const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFldmJseGF6aGhrdG10dnpxZ3ppIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MTk5NDU1NTMsImV4cCI6MTkzNTUyMTU1M30.U3v-PmON_5vJJJYf9vqAB_Jmq4ZQRxO0Bk8V7RbNfqU';
     
-    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    const sbClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
     
-    // Verifica se já tá logado
     async function checkExistingAuth() {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { user } } = await sbClient.auth.getUser();
       if (user) {
         window.location.href = 'svn_hub_supabase.html';
       }
@@ -151,7 +150,7 @@
       btn.disabled = true;
       
       try {
-        const { data, error } = await supabase.auth.signInWithPassword({
+        const { data, error } = await sbClient.auth.signInWithPassword({
           email,
           password
         });
@@ -160,7 +159,6 @@
           throw new Error(error.message);
         }
         
-        // Login bem-sucedido
         messageEl.textContent = 'Autenticado! Redirecionando...';
         messageEl.className = 'success';
         
