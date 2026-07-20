@@ -2571,6 +2571,7 @@ th.num{text-align:right;}
   <button class="nav-item active" id="nav-painel" onclick="showView('painel')"><span class="ic">◈</span>Painel</button>
   <button class="nav-item" id="nav-clientes" onclick="showView('clientes')"><span class="ic">☰</span>Base de clientes</button>
   <button class="nav-item" id="nav-captacao" onclick="showView('captacao')"><span class="ic">↗</span>Captação &amp; Pipeline</button>
+  <button class="nav-item" id="nav-planejamento" onclick="showView('planejamento')"><span class="ic">▦</span>Planejamento de Receita</button>
   <button class="nav-item" id="nav-pj2" onclick="showView('pj2')"><span class="ic">◇</span>PJ2 · Novos negócios</button>
   <div class="nav-label">Assessoria</div>
   <button class="nav-item" id="nav-materiais" onclick="showView('materiais')"><span class="ic">▤</span>Materiais &amp; Ferramentas</button>
@@ -2750,6 +2751,60 @@ th.num{text-align:right;}
       <div class="eyebrow">Funil do mês</div>
       <div class="grid c4" id="funilGrid"></div>
       <div class="footer-note">Conversão = contas abertas ÷ leads. Acima de 25% pontua no tripé (30 pts). Edite os números direto nos campos acima.</div>
+    </div>
+  </div>
+
+  <!-- ================= PLANEJAMENTO DE RECEITA ================= -->
+  <div class="view" id="view-planejamento">
+    <div class="grid c3" style="margin-bottom:18px;">
+      <div class="kpi dark"><div class="l">Potencial total</div><div class="v" id="planPotencial">R$0</div><div class="s" id="planCount">0 linhas</div></div>
+      <div class="kpi"><div class="l">Total realizado</div><div class="v" id="planRealizado">R$0</div><div class="s">status Feito / Lançado</div></div>
+      <div class="kpi"><div class="l">Em aberto</div><div class="v" id="planAberto">R$0</div><div class="s">potencial ainda não realizado</div></div>
+    </div>
+
+    <div class="card">
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:14px;">
+        <div><h2>Pipeline de Receita</h2><div class="desc" style="margin:0;">Receita gerada = valor × ROA. Selecione o produto para preencher o ROA automaticamente.</div></div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+          <button class="btn ghost" onclick="exportPlanReceitaXLSX()">⬇ Exportar XLSX</button>
+          <button class="btn solid" onclick="addPlanRow()">+ Linha</button>
+        </div>
+      </div>
+      <div style="overflow-x:auto;">
+      <table id="tblPlanReceita">
+        <thead><tr>
+          <th>Cliente</th>
+          <th class="num">Valor (R$)</th>
+          <th>Aplicação</th>
+          <th class="num">ROA (%)</th>
+          <th class="num">Receita gerada</th>
+          <th>Status</th>
+          <th class="noclick"></th>
+        </tr></thead>
+        <tbody id="planBody"></tbody>
+        <tfoot><tr>
+          <td style="font-weight:600;">Total</td>
+          <td class="num" id="planTotValor" style="font-weight:600;"></td>
+          <td></td>
+          <td></td>
+          <td class="num" id="planTotReceita" style="font-weight:600;"></td>
+          <td colspan="2" style="color:var(--ink-soft); font-size:12px;" id="planTotStatus"></td>
+        </tr></tfoot>
+      </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:12px;">
+        <div><div class="eyebrow">Produtos & ROA</div><div class="desc" style="margin:0;">ROA predefinido por produto — usado ao selecionar a aplicação em cada linha.</div></div>
+        <button class="btn solid" onclick="addPlanProduto()">+ Produto</button>
+      </div>
+      <div style="overflow-x:auto;">
+      <table>
+        <thead><tr><th>Produto</th><th class="num">ROA (%)</th><th class="noclick"></th></tr></thead>
+        <tbody id="planProdBody"></tbody>
+      </table>
+      </div>
     </div>
   </div>
 
@@ -4842,11 +4897,26 @@ const MAT_DEFAULT = [
 function m8(){ return Math.random().toString(36).slice(2,10); }
 function mesHoje(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); }
 
+const PLAN_PRODUTOS_DEFAULT = [
+  {nome:'J&F', roa:1.8},
+  {nome:'MB', roa:2.0},
+  {nome:'TOKENMB', roa:2.2},
+  {nome:'Câmbio', roa:1.21},
+  {nome:'Internacional - Câmbio', roa:1.5},
+  {nome:'Deb Cemig', roa:2.3},
+  {nome:'Renda Fixa', roa:1.0},
+  {nome:'Credmei', roa:1.8},
+  {nome:'Jeitto', roa:1.8}
+];
+const PLAN_STATUS = ['Não Feito','Mensagem enviada','Push enviado','Reserva','Feito','Lançado','Passivo'];
+
 let S = {
   mesAtual: mesHoje(),
   clientes: [],
   r2decks: [],
   pipeline: [],
+  planReceita: [],
+  planProdutos: PLAN_PRODUTOS_DEFAULT.map(p=>({...p})),
   materiais: MAT_DEFAULT,
   meses: {}
 };
@@ -4901,6 +4971,8 @@ async function load(){
   }
   if(!S.materiais || !S.materiais.length) S.materiais = MAT_DEFAULT;
   if(!Array.isArray(S.r2decks)) S.r2decks = [];
+  if(!Array.isArray(S.planReceita)) S.planReceita = [];
+  if(!Array.isArray(S.planProdutos) || !S.planProdutos.length) S.planProdutos = PLAN_PRODUTOS_DEFAULT.map(p=>({...p}));
   S.clientes.forEach(c=>{
     if(!c.codigo && /^\d+$/.test((c.nome||'').trim()) && CODIGO_NOME[c.nome.trim()]){
       c.codigo = c.nome.trim();
@@ -4964,6 +5036,7 @@ const TITLES = {
   painel:['Painel','Visão geral do mês — receita, captação e qualidade.'],
   clientes:['Base de clientes','Custódia, receita, tierização e a próxima oportunidade de cada cliente.'],
   captacao:['Captação & Pipeline','Do lead ao fechamento: funil, negócios em andamento e captação líquida.'],
+  planejamento:['Planejamento de Receita','Pipeline de receita por cliente e produto, com ROA e receita gerada.'],
   pj2:['PJ2 · Novos negócios','Seguro, consórcio e planejamento — receita além da custódia.'],
   materiais:['Materiais & Ferramentas','Apresentações e simuladores prontos para a próxima reunião.'],
   'ff-calc':['Calculadora de Fee Fixo','Custódia em fee fixo → receita do escritório → salário líquido do assessor.'],
@@ -4975,7 +5048,7 @@ const TITLES = {
   positivador:['Upload Positivador','Importa Positivador e Diversificador (.xlsx) e sincroniza com a Base de clientes.']
 };
 
-const GESTAO_VIEWS = ['painel','clientes','captacao','pj2'];
+const GESTAO_VIEWS = ['painel','clientes','captacao','planejamento','pj2'];
 
 function showView(v){
   document.querySelectorAll('.view').forEach(el=>el.classList.remove('active'));
@@ -5011,6 +5084,8 @@ function renderAll(){
   renderClientes();
   renderClienteList();
   renderPipeline();
+  renderPlanReceita();
+  renderPlanProdutos();
   renderPj2();
   renderMateriais();
   ffPopularClientes();
@@ -5255,6 +5330,12 @@ function delCliente(id){
   S.clientes = S.clientes.filter(x=>x.id!==id);
   renderAll();
 }
+function updClienteAbordagem(id, key, val){
+  const c = S.clientes.find(x=>x.id===id); if(!c) return;
+  if(!c.abordagens) c.abordagens = {};
+  c.abordagens[key] = !!val;
+  save();
+}
 function updCliente(id, k, v){
   const c = S.clientes.find(x=>x.id===id); if(!c) return;
   c[k] = (k==='custodia'||k==='receita') ? (+v||0) : (k==='reuniao'? !!v : v);
@@ -5333,6 +5414,110 @@ function renderTotais(){
   document.getElementById('totReunioes').textContent = vis.length + ' clientes na base';
 }
 
+// ============================================================
+// PLANEJAMENTO DE RECEITA (pipeline de receita por cliente/produto)
+// ============================================================
+function planRoaDoProduto(nome){
+  const p = (S.planProdutos||[]).find(x=>x.nome===nome);
+  return p ? (+p.roa||0) : 0;
+}
+function addPlanRow(){
+  S.planReceita.push({id:m8(), cliente:'', valor:0, produto:'', roa:0, status:'Não Feito'});
+  renderPlanReceita(); save();
+}
+function delPlanRow(id){
+  S.planReceita = S.planReceita.filter(r=>r.id!==id);
+  renderPlanReceita(); save();
+}
+function updPlan(id,k,v){
+  const r = S.planReceita.find(x=>x.id===id); if(!r) return;
+  if(k==='valor'||k==='roa') r[k] = +v||0;
+  else r[k] = v;
+  // Ao trocar o produto, puxa o ROA predefinido
+  if(k==='produto') r.roa = planRoaDoProduto(v);
+  save(); renderPlanReceita();
+}
+function planReceitaLinha(r){ return (+r.valor||0)*((+r.roa||0)/100); }
+function renderPlanReceita(){
+  const body = document.getElementById('planBody'); if(!body) return;
+  const prodOptions = (S.planProdutos||[]).map(p=>p.nome);
+  let html='';
+  S.planReceita.forEach(r=>{
+    const rec = planReceitaLinha(r);
+    const opts = ['', ...prodOptions].map(o=>`<option ${o===r.produto?'selected':''}>${esc(o)}</option>`).join('');
+    const stOpts = PLAN_STATUS.map(s=>`<option ${s===r.status?'selected':''}>${s}</option>`).join('');
+    html += `<tr>
+      <td><input type="text" list="clienteList" value="${esc(r.cliente)}" placeholder="Cliente" oninput="resolveClienteCodigo(this)" onchange="updPlan('${r.id}','cliente',this.value)"></td>
+      <td class="num"><input type="text" inputmode="numeric" value="${r.valor?fmt(r.valor):''}" placeholder="R$0" style="text-align:right" oninput="maskMoeda(this)" onchange="updPlan('${r.id}','valor',parseMoeda(this))"></td>
+      <td><select onchange="updPlan('${r.id}','produto',this.value)">${opts}</select></td>
+      <td class="num"><input type="number" step="0.01" value="${r.roa!=null&&r.roa!==''?r.roa:''}" placeholder="%" style="text-align:right; width:72px;" onchange="updPlan('${r.id}','roa',this.value)"></td>
+      <td class="num" style="color:var(--amber); font-weight:600; white-space:nowrap;">${fmt(rec)}</td>
+      <td><select onchange="updPlan('${r.id}','status',this.value)">${stOpts}</select></td>
+      <td><button class="btn danger" title="Remover" onclick="delPlanRow('${r.id}')">×</button></td>
+    </tr>`;
+  });
+  body.innerHTML = html || '<tr><td colspan="7" class="empty">Nenhuma linha. Clique em “+ Linha”.</td></tr>';
+  // Totais
+  const realizadoStatus = ['Feito','Lançado'];
+  const potencial = S.planReceita.reduce((a,r)=>a+planReceitaLinha(r),0);
+  const realizado = S.planReceita.filter(r=>realizadoStatus.includes(r.status)).reduce((a,r)=>a+planReceitaLinha(r),0);
+  const totValor = S.planReceita.reduce((a,r)=>a+(+r.valor||0),0);
+  const set = (id,val)=>{ const el=document.getElementById(id); if(el) el.textContent=val; };
+  set('planTotValor', fmt(totValor));
+  set('planTotReceita', fmt(potencial));
+  set('planTotStatus', S.planReceita.length + ' linhas');
+  set('planPotencial', fmt(potencial));
+  set('planCount', S.planReceita.length + ' linhas');
+  set('planRealizado', fmt(realizado));
+  set('planAberto', fmt(potencial - realizado));
+}
+function renderPlanProdutos(){
+  const body = document.getElementById('planProdBody'); if(!body) return;
+  let html='';
+  (S.planProdutos||[]).forEach((p,i)=>{
+    html += `<tr>
+      <td><input type="text" value="${esc(p.nome)}" placeholder="Produto" onchange="updPlanProduto(${i},'nome',this.value)"></td>
+      <td class="num"><input type="number" step="0.01" value="${p.roa!=null&&p.roa!==''?p.roa:''}" placeholder="%" style="text-align:right; width:72px;" onchange="updPlanProduto(${i},'roa',this.value)"></td>
+      <td><button class="btn danger" title="Remover" onclick="delPlanProduto(${i})">×</button></td>
+    </tr>`;
+  });
+  body.innerHTML = html || '<tr><td colspan="3" class="empty">Nenhum produto cadastrado.</td></tr>';
+}
+function addPlanProduto(){
+  S.planProdutos.push({nome:'Novo produto', roa:0});
+  renderPlanProdutos(); save();
+}
+function updPlanProduto(i,k,v){
+  const p = S.planProdutos[i]; if(!p) return;
+  const nomeAntigo = p.nome;
+  p[k] = (k==='roa') ? (+v||0) : v;
+  // Se renomeou/mudou ROA, propaga para as linhas que usam esse produto
+  if(k==='nome'){ S.planReceita.forEach(r=>{ if(r.produto===nomeAntigo) r.produto=v; }); }
+  if(k==='roa'){ S.planReceita.forEach(r=>{ if(r.produto===p.nome) r.roa=+v||0; }); }
+  save(); renderPlanProdutos(); renderPlanReceita();
+}
+function delPlanProduto(i){
+  if(!S.planProdutos[i]) return;
+  S.planProdutos.splice(i,1);
+  renderPlanProdutos(); save();
+}
+function exportPlanReceitaXLSX(){
+  if(!S.planReceita.length){ alert('Nada para exportar — adicione linhas primeiro.'); return; }
+  const data = S.planReceita.map(r=>({
+    'Cliente': r.cliente||'',
+    'Valor (R$)': +r.valor||0,
+    'Aplicação': r.produto||'',
+    'ROA (%)': (+r.roa||0)/100,
+    'Receita Gerada (R$)': planReceitaLinha(r),
+    'Status': r.status||''
+  }));
+  const ws = XLSX.utils.json_to_sheet(data);
+  ws['!cols'] = [{wch:20},{wch:14},{wch:22},{wch:10},{wch:18},{wch:16}];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Pipeline de Receita');
+  XLSX.writeFile(wb, 'pipeline_receita.xlsx');
+}
+
 // ---- Detalhe expansível do cliente (Positivador + Diversificador + anotações) ----
 const _detAbertos = new Set();
 function toggleClienteDetalhe(id){
@@ -5373,6 +5558,15 @@ function detalheClienteHTML(c, pos, ativos){
     <div><span style="color:var(--ink-soft);">Modelo:</span> <b>${modelo}</b></div>
     <div><span style="color:var(--ink-soft);">Custódia:</span> <b>${money(c.custodia)}</b></div>
     <div><span style="color:var(--ink-soft);">Receita mês:</span> <b>${money(c.receita)}</b></div>
+  </div>`;
+  // Abordagens já feitas
+  const ab = c.abordagens || {};
+  const cats = [['seguro','Seguro'],['consorcio','Consórcio'],['mb','MB'],['internacional','Internacional'],['planning','Financial Planning']];
+  h += `<div style="margin-bottom:16px;">
+    <div style="font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--amber);font-weight:700;margin-bottom:8px;">Abordagens já feitas</div>
+    <div style="display:flex;gap:16px;flex-wrap:wrap;font-size:13px;">
+      ${cats.map(([k,lbl])=>`<label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" ${ab[k]?'checked':''} style="accent-color:var(--amber);width:15px;height:15px;" onchange="updClienteAbordagem('${c.id}','${k}',this.checked)"> ${lbl}</label>`).join('')}
+    </div>
   </div>`;
   if(!c.codigo){
     h += `<div style="font-size:13px;color:var(--ink-soft);">Cliente sem código do Positivador — sem dados importados.</div>`;
