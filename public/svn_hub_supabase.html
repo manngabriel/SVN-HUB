@@ -2638,11 +2638,12 @@ th.num{text-align:right;}
   <!-- ================= PAINEL ================= -->
   <div class="view active" id="view-painel">
 
-    <div class="grid c4" style="margin-bottom:18px;">
+    <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); margin-bottom:18px;">
       <div class="kpi dark"><div class="l">Custódia da base</div><div class="v" id="kpiCustodia">R$0</div><div class="s" id="kpiClientes">0 clientes</div></div>
       <div class="kpi"><div class="l">Receita escritório · mês</div><div class="v" id="kpiReceita">R$0</div><div class="s" id="kpiReceitaMeta">meta R$18.200</div></div>
       <div class="kpi"><div class="l">Captação líquida · mês</div><div class="v" id="kpiCaptacao">R$0</div><div class="s"><b>Potencial de captação:</b> <span id="kpiPipeline">R$0</span></div></div>
       <div class="kpi"><div class="l">Receita potencial</div><div class="v" id="kpiReceitaPot">R$0</div><div class="s" id="kpiReceitaPotSub">previsto no Planejamento</div></div>
+      <div class="kpi"><div class="l">Remuneração fee fixo · mês</div><div class="v" id="kpiFeeReceitaMes">R$0</div><div class="s" id="feeResumoLinha">0 Fee Fixo · 0 Comission</div></div>
     </div>
 
     <div class="grid c2">
@@ -2700,11 +2701,6 @@ th.num{text-align:right;}
       </div>
       <div id="painelTodosHoje"></div>
     </div>
-
-    <details class="card" style="margin-top:18px; padding:12px 16px;">
-      <summary style="cursor:pointer; font-size:12px; color:var(--ink-soft); font-weight:600; letter-spacing:.04em; text-transform:uppercase;">Modelo de remuneração</summary>
-      <div id="feeResumoLinha" style="font-size:12.5px; color:var(--ink-soft); margin-top:8px; line-height:1.5;"></div>
-    </details>
 
     <div class="card" style="margin-top:18px;">
       <div class="eyebrow">Oportunidades</div>
@@ -5322,7 +5318,8 @@ function renderPainelModelo(){
   const feeAno = fee.reduce((a,c)=>a+(+c.custodia||0)*((+c.feeTaxa||0)/100),0);
   const feeMes = feeAno/12;
   const taxaMedia = feeCust>0 ? (feeAno/feeCust*100) : 0;
-  el.innerHTML = `<b>${fee.length}</b> Fee Fixo (${fmt(feeCust)}) · <b>${com.length}</b> Comission based &nbsp;·&nbsp; receita fee-based <b>${fmt(feeMes)}</b>/mês (${fmt(feeAno)} a.a) · taxa média ${taxaMedia.toLocaleString('pt-BR',{maximumFractionDigits:2})}%`;
+  const v = document.getElementById('kpiFeeReceitaMes'); if(v) v.textContent = fmt(feeMes);
+  el.innerHTML = `${fee.length} Fee Fixo · ${com.length} Comission<br>${fmt(feeAno)} a.a · taxa média ${taxaMedia.toLocaleString('pt-BR',{maximumFractionDigits:2})}%`;
 }
 
 function setBar(barId, valId, p, label){
@@ -8691,7 +8688,12 @@ function setMeta(k, v){
 }
 function trocarMes(m){
   if(!m) return;
+  const anterior = S.meses[S.mesAtual];
   S.mesAtual = m;
+  if(!S.meses[m]){
+    // Mês novo: herda a config do mês anterior e zera só a receita.
+    S.meses[m] = anterior ? Object.assign(JSON.parse(JSON.stringify(anterior)), {receita:0}) : metasVazias();
+  }
   ensureMes(m);
   save(); renderAll();
 }
