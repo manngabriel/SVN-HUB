@@ -4953,7 +4953,8 @@ const TITLES = {
   'p10k':['Plano 10K','Teia de objetivos, rotina derivada e simulador de carteira do assessor.'],
   'fee-fixo':['Apresentação Fee Fixo','Deck institucional sobre o modelo de remuneração fixa sobre o patrimônio.'],
   'sim-carteira':['Simulador de Carteira','Compare a carteira atual e proposta de um cliente, com modo de apresentação.'],
-  'svn-r2':['SVN R2 Hub','Monte o deck de proposta para a reunião R2, por cliente da Base de clientes.']
+  'svn-r2':['SVN R2 Hub','Monte o deck de proposta para a reunião R2, por cliente da Base de clientes.'],
+  positivador:['Upload Positivador','Importa Positivador e Diversificador (.xlsx) e sincroniza com a Base de clientes.']
 };
 
 const GESTAO_VIEWS = ['painel','clientes','captacao','pj2'];
@@ -5243,12 +5244,8 @@ function renderClientes(){
     const opOptions = OPORTUNIDADES.map(o=>`<option ${o===c.oportunidade?'selected':''}>${o}</option>`).join('');
     html += `<tr>
       <td><input type="text" value="${esc(c.nome)}" placeholder="Nome" onchange="updCliente('${c.id}','nome',this.value)"></td>
-      <td class="num">${c.codigo
-        ? `<span class="locked-val" title="Vem do Positivador — reimporte o arquivo para atualizar">🔒 ${fmt(c.custodia)}</span>`
-        : `<input type="text" inputmode="numeric" value="${c.custodia?fmt(c.custodia):''}" placeholder="R$0" style="text-align:right" oninput="maskMoeda(this)" onchange="updCliente('${c.id}','custodia',parseMoeda(this))">`}</td>
-      <td class="num">${c.codigo
-        ? `<span class="locked-val" title="Vem do Positivador — reimporte o arquivo para atualizar">🔒 ${fmt(c.receita)}</span>`
-        : `<input type="text" inputmode="numeric" value="${c.receita?fmt(c.receita):''}" placeholder="R$0" style="text-align:right" oninput="maskMoeda(this)" onchange="updCliente('${c.id}','receita',parseMoeda(this))">`}</td>
+      <td class="num"><input type="text" inputmode="numeric" value="${c.custodia?fmt(c.custodia):''}" placeholder="R$0" style="text-align:right" oninput="maskMoeda(this)" onchange="updCliente('${c.id}','custodia',parseMoeda(this))"></td>
+      <td class="num"><input type="text" inputmode="numeric" value="${c.receita?fmt(c.receita):''}" placeholder="R$0" style="text-align:right" oninput="maskMoeda(this)" onchange="updCliente('${c.id}','receita',parseMoeda(this))"></td>
       <td><select onchange="updCliente('${c.id}','tier',this.value); renderClientes();">
         <option value="1" ${c.tier==='1'?'selected':''}>Tier 1</option>
         <option value="2" ${c.tier==='2'?'selected':''}>Tier 2</option>
