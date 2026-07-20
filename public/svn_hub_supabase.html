@@ -5037,6 +5037,8 @@ const PLAN_PRODUTOS_DEFAULT = [
 ];
 const PLAN_STATUS = ['Feito','Não Feito','Reservado','Mensagem enviada','Push enviado'];
 const PLAN_STATUS_REALIZADO = ['Feito','Reservado'];
+const PLAN_SEED = [{"cliente": "ALAN", "valor": 12000, "produto": "J&F", "roa": 1.8, "status": "Reservado"}, {"cliente": "Alexandre", "valor": 29119, "produto": "Cambio", "roa": 1.21, "status": "Feito"}, {"cliente": "Alexandre", "valor": 19435, "produto": "Deb Cemig", "roa": 2.3, "status": "Feito"}, {"cliente": "Alexandre", "valor": 30000, "produto": "Internacional - Câmbio", "roa": 1.5, "status": "Feito"}, {"cliente": "Barbara", "valor": 5000, "produto": "J&F", "roa": 1.8, "status": "Reservado"}, {"cliente": "Barbara", "valor": 6000, "produto": "MB", "roa": 2.0, "status": "Feito"}, {"cliente": "Carlos", "valor": 3000, "produto": "TOKENMB", "roa": 2.2, "status": "Feito"}, {"cliente": "Clarice", "valor": 14000, "produto": "J&F", "roa": 1.8, "status": "Reservado"}, {"cliente": "Fábio", "valor": 10000, "produto": "J&F", "roa": 1.8, "status": "Reservado"}, {"cliente": "Helio Sch.", "valor": 25000, "produto": "J&F", "roa": 1.8, "status": "Mensagem enviada"}, {"cliente": "Juan", "valor": 10000, "produto": "J&F", "roa": 1.8, "status": "Push enviado"}, {"cliente": "Kelly", "valor": 25000, "produto": "J&F", "roa": 1.8, "status": "Não Feito"}, {"cliente": "Marcio", "valor": 7000, "produto": "J&F", "roa": 1.8, "status": "Reservado"}, {"cliente": "Marlon", "valor": 17436, "produto": "Credmei", "roa": 2.0, "status": "Feito"}, {"cliente": "Marlon", "valor": 22475, "produto": "Jeitto", "roa": 2.0, "status": "Feito"}, {"cliente": "Marlon", "valor": 20000, "produto": "Renda fixa", "roa": 1.8, "status": "Mensagem enviada"}, {"cliente": "Moniky", "valor": 6000, "produto": "J&F", "roa": 1.8, "status": "Mensagem enviada"}, {"cliente": "Moniky", "valor": 10000, "produto": "NovoSaq", "roa": 2.0, "status": "Feito"}, {"cliente": "Nayara", "valor": 10000, "produto": "J&F", "roa": 1.8, "status": "Não Feito"}, {"cliente": "Otavio", "valor": 5000, "produto": "J&F", "roa": 1.8, "status": "Mensagem enviada"}, {"cliente": "Otavio", "valor": 12000, "produto": "MB", "roa": 2.0, "status": "Mensagem enviada"}, {"cliente": "Passivo", "valor": 4950, "produto": "Passivo", "roa": 100.0, "status": "Feito"}, {"cliente": "Patricia", "valor": 7000, "produto": "J&F", "roa": 1.8, "status": "Mensagem enviada"}, {"cliente": "Silvio", "valor": 6000, "produto": "J&F", "roa": 1.8, "status": "Não Feito"}, {"cliente": "Silvio", "valor": 8000, "produto": "MB", "roa": 2.0, "status": "Não Feito"}, {"cliente": "TOTAL REALIZADO", "valor": 324415, "produto": "", "roa": 2.5423, "status": "Não Feito"}, {"cliente": "POTENCIAL TOTAL", "valor": 324415, "produto": "", "roa": 3.2981, "status": "Não Feito"}];
+
 
 let S = {
   mesAtual: mesHoje(),
@@ -5107,6 +5109,12 @@ async function load(){
   if(!Array.isArray(S.planReceita)) S.planReceita = [];
   if(!Array.isArray(S.planProdutos) || !S.planProdutos.length) S.planProdutos = PLAN_PRODUTOS_DEFAULT.map(p=>({...p}));
   if(typeof S.planReceitaPassiva !== 'number') S.planReceitaPassiva = 0;
+  if(!S._planSeed && (!Array.isArray(S.planReceita) || !S.planReceita.length)){
+    S.planReceita = (typeof PLAN_SEED!=='undefined'?PLAN_SEED:[]).map(r=>Object.assign({id:m8()}, r));
+    if(!Array.isArray(S.planProdutos)) S.planProdutos = PLAN_PRODUTOS_DEFAULT.map(p=>({...p}));
+    S.planReceita.forEach(r=>{ if(r.produto && !S.planProdutos.some(p=>p.nome===r.produto)) S.planProdutos.push({nome:r.produto, roa:+r.roa||0}); });
+    S._planSeed = true;
+  }
   // Migra status antigos para o novo conjunto
   const _stMap = {'Reserva':'Reservado','Lançado':'Feito','Passivo':'Feito'};
   S.planReceita.forEach(r=>{
@@ -6110,7 +6118,7 @@ function renderPipeline(){
 // Lê os produtos PJ2 (e a meta de reuniões de cada) da teia salva do Plano 10K.
 function plano10kPJ2Produtos(){
   let tree=null;
-  try{ const v=localStorage.getItem('assessor:teia:v1'); if(v) tree=JSON.parse(v); }catch(e){}
+  try{ const v=localStorage.getItem('assessor:teia:v2'); if(v) tree=JSON.parse(v); }catch(e){}
   const pj2 = tree && (tree.children||[]).find(n=>/PJ2/i.test(n.label||''));
   if(!pj2 || !(pj2.children||[]).length){
     return [{label:'Seguro', meta:2},{label:'Consórcio', meta:2}];
@@ -6498,46 +6506,7 @@ function ffRecalc(){
 const CADENCES = ["—","Diária","Semanal","Quinzenal","Mensal"];
 const GROUP_COLORS = ["#BE7F49","#A4553C","#7A5230","#9C6B2E","#8C6239"];
 
-const DEFAULT_TREE = {
-  label:"Salário R$ 10k", cad:"—", note:"", children:[
-    {label:"Captação", cad:"—", note:"", children:[
-      {label:"Indicação", cad:"—", note:"", children:[
-        {label:"Script de pedido", cad:"—", note:"Ter uma frase pronta para pedir indicação sem constrangimento.", children:[]},
-        {label:"2 pedidos de indicação", cad:"Semanal", goal:2, note:"Ao fim de cada reunião boa, pedir o nome de 2 pessoas.", children:[]}
-      ]},
-      {label:"Funil de leads (SVN)", cad:"—", note:"", children:[
-        {label:"Estudar SPIN", cad:"Semanal", note:"30 min treinando perguntas de Implicação e Necessidade.", children:[]},
-        {label:"Escuta de call (2x)", cad:"Semanal", goal:2, note:"Ouvir 2 calls gravadas e anotar 1 ponto de melhoria em cada.", children:[]},
-        {label:"Revisar meta de conversão", cad:"Mensal", note:"Comparar leads recebidos x agendados x convertidos.", children:[]}
-      ]}
-    ]},
-    {label:"Receita", cad:"—", note:"", children:[
-      {label:"XP", cad:"—", note:"", children:[
-        {label:"Ligar p/ clientes com saldo em conta", cad:"Diária", goal:3, note:"Puxar o relatório de saldo parado e ligar para alocar.", children:[]},
-        {label:"Revisão de carteira", cad:"Semanal", goal:8, note:"Revisar carteiras com radar de cross-sell ligado.", children:[]}
-      ]},
-      {label:"MB", cad:"—", note:"", children:[
-        {label:"Captação de 600k", cad:"Mensal", note:"Fechar 600k líquidos no mês.", children:[]},
-        {label:"Mapear portabilidade", cad:"Mensal", note:"Listar clientes com recursos em outras instituições.", children:[]}
-      ]}
-    ]},
-    {label:"PJ2 — Outros negócios", cad:"—", note:"", children:[
-      {label:"Seguro", cad:"—", note:"", children:[
-        {label:"2 reuniões", cad:"Mensal", goal:2, note:"Levar 2 clientes ao especialista de seguros.", children:[
-          {label:"1 contato", cad:"Semanal", note:"Abordar 1 cliente da lista de potenciais.", children:[]},
-          {label:"Qualificar lead", cad:"Semanal", note:"Checar perfil e necessidade antes de passar ao especialista.", children:[]}
-        ]},
-        {label:"Mapear carteira", cad:"Mensal", note:"Identificar quem tem dependentes e nenhum seguro.", children:[]}
-      ]},
-      {label:"Consórcio", cad:"—", note:"", children:[
-        {label:"2 reuniões", cad:"Mensal", goal:2, note:"Levar 2 clientes ao especialista de consórcio.", children:[
-          {label:"1 contato", cad:"Semanal", note:"Abordar 1 cliente da lista de potenciais.", children:[]}
-        ]},
-        {label:"Mapear carteira", cad:"Mensal", note:"Identificar quem planeja imóvel ou veículo.", children:[]}
-      ]}
-    ]}
-  ]
-};
+const DEFAULT_TREE = {"label": "Salário R$10.000", "cad": "—", "children": [{"label": "Captação", "cad": "—", "children": [{"label": "Indicação", "cad": "—", "children": [{"label": "8 pedidos", "cad": "Mensal", "children": [{"label": "2 pedidos", "cad": "Semanal", "children": [], "id": "3c0afa7f", "goal": 2, "note": ""}], "collapsed": false, "id": "5060d78b", "goal": 8, "note": ""}], "collapsed": false, "id": "4c3e3edd", "goal": 1, "note": ""}, {"label": "Funil de leads (SVN)", "cad": "—", "children": [{"label": "Estudar SPIN", "cad": "Semanal", "children": [{"label": "Escutar calls e formular melhores perguntas", "cad": "Semanal", "children": [], "id": "4130446a", "goal": 1, "note": ""}], "collapsed": false, "id": "9a4295b6", "goal": 1, "note": ""}, {"label": "Escuta de call (2x)", "cad": "Semanal", "children": [{"label": "Anotar erros das calls e possíveis melhorias", "cad": "Semanal", "children": [], "id": "17af6c24", "goal": 1, "note": ""}], "collapsed": false, "id": "138c8834", "goal": 2, "note": ""}], "collapsed": false, "id": "70c7fca4", "goal": 1, "note": ""}, {"label": "Contato com clientes distantes (SOW + Aporte)", "cad": "—", "note": "", "children": [{"label": "1 FP", "cad": "Quinzenal", "note": "", "children": [], "collapsed": false, "id": "1d128b88", "goal": 1}, {"label": "Enviar XPerformance", "cad": "Mensal", "note": "", "children": [], "id": "aeacef02", "goal": 1}], "collapsed": false, "id": "60e4c8c5", "goal": 1}], "collapsed": false, "id": "6119001b", "goal": 1, "note": ""}, {"label": "Receita", "cad": "—", "children": [{"label": "XP", "cad": "—", "children": [{"label": "Abordar clientes com saldo em conta", "cad": "—", "children": [{"label": "10 contatos com clientes por dia", "cad": "Diária", "children": [], "id": "05b4b15c", "goal": 10, "note": ""}, {"label": "3 analises de carteira + relatório", "cad": "Diária", "note": "", "children": [], "id": "de7073a4", "goal": 3}], "collapsed": false, "id": "4b154c34", "goal": 1, "note": ""}, {"label": "FEE Fixo", "cad": "—", "note": "", "children": [{"label": "Objetivo inicial: R$3.000.000", "cad": "—", "note": "", "children": [], "id": "d1d335a8", "goal": 1}, {"label": "Abordagem de X por semana", "cad": "—", "note": "", "children": [], "id": "c1fe4319", "goal": 1}], "collapsed": false, "id": "7b5ee3c4", "goal": 1}], "collapsed": false, "id": "3ffb4e97", "goal": 1, "note": ""}, {"label": "MB", "cad": "—", "children": [{"label": "Abrir contas com R$10.000", "cad": "Mensal", "note": "", "children": [], "id": "3a4ae247", "goal": 2}], "collapsed": false, "id": "cf0b013c", "goal": 1, "note": ""}], "collapsed": false, "id": "2f103610", "goal": 1, "note": ""}, {"label": "PJ2 — Outros negócios", "cad": "—", "children": [{"label": "Seguro/Consórcio", "cad": "Mensal", "children": [{"label": "2 reuniões de cada", "cad": "Mensal", "children": [{"label": "4 abordagens de cada um", "cad": "Mensal", "children": [{"label": "1 seguro/consórcio abordado por semana", "cad": "Semanal", "children": [], "id": "80ac07a9", "goal": 1, "note": ""}], "collapsed": false, "id": "f94d32b6", "goal": 4, "note": ""}], "collapsed": false, "id": "6a3cbb9f", "goal": 4, "note": ""}], "collapsed": false, "id": "85c1cbe3", "goal": 2, "note": ""}], "collapsed": false, "id": "fedf4208", "goal": 1, "note": ""}, {"label": "Organização", "cad": "—", "note": "", "children": [{"label": "Planilha de receita", "cad": "—", "note": "", "children": [], "id": "d858a302", "goal": 1}, {"label": "Positivador Rennan", "cad": "—", "note": "", "children": [], "id": "e1b15c49", "goal": 1}, {"label": "Revisor e consolidador de carteira", "cad": "—", "note": "", "children": [], "id": "2b7c74fd", "goal": 1}], "collapsed": false, "id": "0ed49045", "goal": 1}], "collapsed": false, "id": "c8e81908", "goal": 1, "note": ""};
 
 let tree = clone(DEFAULT_TREE);
 function clone(o){return JSON.parse(JSON.stringify(o));}
@@ -7066,7 +7035,7 @@ function routineCard({node,parent,idx}){
 }
 
 /* ================= PERSISTÊNCIA ================= */
-const KEY="assessor:teia:v1", KEY_SIM="assessor:sim:v1", KEY_TXT="assessor:txt:v1", KEY_NOTES="assessor:notas:v1", KEY_LOG="assessor:log:v1";
+const KEY="assessor:teia:v2", KEY_SIM="assessor:sim:v1", KEY_TXT="assessor:txt:v1", KEY_NOTES="assessor:notas:v1", KEY_LOG="assessor:log:v1";
 
 const store = (()=>{
   const mem={};
