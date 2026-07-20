@@ -2678,25 +2678,27 @@ th.num{text-align:right;}
       <div style="overflow-x:auto;">
       <table id="tblClientes">
         <thead><tr>
+          <th class="noclick" style="width:34px;"></th>
           <th onclick="sortClientes('nome')">Cliente</th>
+          <th onclick="sortClientes('codigo')">Código</th>
           <th class="num" onclick="sortClientes('custodia')">Custódia</th>
           <th class="num" onclick="sortClientes('receita')">Receita mês</th>
           <th onclick="sortClientes('tier')">Tier</th>
-          <th class="noclick">Reunião no mês</th>
-          <th class="noclick">Oportunidade</th>
-          <th class="noclick">Notas</th>
+          <th class="noclick">Modelo</th>
           <th class="noclick"></th>
         </tr></thead>
         <tbody id="clientesBody"></tbody>
         <tfoot><tr>
+          <td></td>
           <td style="font-weight:600;">Total</td>
+          <td></td>
           <td class="num" id="totCustodia" style="font-weight:600;"></td>
           <td class="num" id="totReceita" style="font-weight:600;"></td>
-          <td colspan="5" id="totReunioes" style="color:var(--ink-soft); font-size:12px;"></td>
+          <td colspan="3" id="totReunioes" style="color:var(--ink-soft); font-size:12px;"></td>
         </tr></tfoot>
       </table>
       </div>
-      <div class="footer-note">Oportunidade marca o próximo negócio com o cliente (fee fixo, aporte, previdência, seguro, consórcio…) e aparece no Painel.</div>
+      <div class="footer-note">Clique na seta ▸ de um cliente para ver os detalhes do Positivador, Diversificador e anotações.</div>
     </div>
   </div>
 
@@ -5061,7 +5063,7 @@ function sortClientes(k){
   renderClientes(); save();
 }
 function addCliente(){
-  S.clientes.push({id:m8(), nome:'', custodia:0, receita:0, tier:'3', reuniao:false, oportunidade:'', notas:''});
+  S.clientes.push({id:m8(), nome:'', codigo:'', custodia:0, receita:0, tier:'3', modelo:'Comission based', reuniao:false, oportunidade:'', notas:''});
   renderClientes(); save();
 }
 
@@ -5218,7 +5220,6 @@ function delCliente(id){
 }
 function updCliente(id, k, v){
   const c = S.clientes.find(x=>x.id===id); if(!c) return;
-  if((k==='custodia'||k==='receita') && c.codigo) return;
   c[k] = (k==='custodia'||k==='receita') ? (+v||0) : (k==='reuniao'? !!v : v);
   save();
   if(k!=='nome' && k!=='notas'){ renderPainel(); renderPj2(); renderTotais(); }
@@ -5233,7 +5234,12 @@ function tierizarAuto(){
 }
 function renderClientes(){
   const q = (document.getElementById('buscaCliente').value||'').toLowerCase();
-  let arr = S.clientes.filter(c=>!q || (c.nome||'').toLowerCase().includes(q));
+  // Só clientes com nome real — esconde vazios e placeholder "Cliente 12345"
+  let arr = S.clientes.filter(c=>{
+    const nome = (c.nome||'').trim();
+    if(!nome || /^Cliente \d+$/.test(nome)) return false;
+    return !q || nome.toLowerCase().includes(q);
+  });
   arr.sort((a,b)=>{
     let va=a[sortKey], vb=b[sortKey];
     if(sortKey==='nome'||sortKey==='tier'){ va=String(va||''); vb=String(vb||''); return va.localeCompare(vb)*sortDir; }
@@ -5241,9 +5247,12 @@ function renderClientes(){
   });
   let html='';
   arr.forEach(c=>{
-    const opOptions = OPORTUNIDADES.map(o=>`<option ${o===c.oportunidade?'selected':''}>${o}</option>`).join('');
-    html += `<tr>
+    const modelo = c.modelo || 'Comission based';
+    const aberto = _detAbertos.has(c.id);
+    html += `<tr class="cli-main">
+      <td style="text-align:center;"><button class="cli-toggle" id="tg-${c.id}" onclick="toggleClienteDetalhe('${c.id}')" title="Detalhes" style="border:none;background:transparent;cursor:pointer;font-size:14px;color:var(--amber);padding:2px 6px;">${aberto?'▾':'▸'}</button></td>
       <td><input type="text" value="${esc(c.nome)}" placeholder="Nome" onchange="updCliente('${c.id}','nome',this.value)"></td>
+      <td style="color:var(--ink-soft); font-size:12.5px; white-space:nowrap;">${c.codigo||'—'}</td>
       <td class="num"><input type="text" inputmode="numeric" value="${c.custodia?fmt(c.custodia):''}" placeholder="R$0" style="text-align:right" oninput="maskMoeda(this)" onchange="updCliente('${c.id}','custodia',parseMoeda(this))"></td>
       <td class="num"><input type="text" inputmode="numeric" value="${c.receita?fmt(c.receita):''}" placeholder="R$0" style="text-align:right" oninput="maskMoeda(this)" onchange="updCliente('${c.id}','receita',parseMoeda(this))"></td>
       <td><select onchange="updCliente('${c.id}','tier',this.value); renderClientes();">
@@ -5251,22 +5260,126 @@ function renderClientes(){
         <option value="2" ${c.tier==='2'?'selected':''}>Tier 2</option>
         <option value="3" ${c.tier==='3'?'selected':''}>Tier 3</option>
       </select></td>
-      <td style="text-align:center;"><input type="checkbox" ${c.reuniao?'checked':''} style="accent-color:var(--amber); width:15px; height:15px;" onchange="updCliente('${c.id}','reuniao',this.checked)"></td>
-      <td><select onchange="updCliente('${c.id}','oportunidade',this.value)">${opOptions}</select></td>
-      <td><input type="text" value="${esc(c.notas)}" placeholder="—" onchange="updCliente('${c.id}','notas',this.value)"></td>
+      <td><select onchange="updCliente('${c.id}','modelo',this.value)">
+        <option ${modelo==='Comission based'?'selected':''}>Comission based</option>
+        <option ${modelo==='Fee Fixo'?'selected':''}>Fee Fixo</option>
+      </select></td>
       <td><button class="btn danger" title="Remover" onclick="delCliente('${c.id}')">×</button></td>
-    </tr>`;
+    </tr>
+    <tr class="cli-detalhe" id="det-${c.id}" style="${aberto?'':'display:none;'}"><td colspan="8" style="background:var(--cream-2); padding:0;"><div id="detbox-${c.id}" style="padding:16px 18px;"></div></td></tr>`;
   });
   document.getElementById('clientesBody').innerHTML = html || '<tr><td colspan="8" class="empty">Adicione o primeiro cliente da base.</td></tr>';
+  // Recarrega painéis de detalhe que estavam abertos
+  _detAbertos.forEach(id=>{ if(document.getElementById('detbox-'+id)) carregarDetalheCliente(id); });
   renderTotais();
 }
+function clienteNomeado(c){ const n=(c.nome||'').trim(); return n && !/^Cliente \d+$/.test(n); }
 function renderTotais(){
-  const custodia = S.clientes.reduce((a,x)=>a+(+x.custodia||0),0);
-  const receita = S.clientes.reduce((a,x)=>a+(+x.receita||0),0);
-  const reun = S.clientes.filter(x=>x.reuniao).length;
+  const vis = S.clientes.filter(clienteNomeado);
+  const custodia = vis.reduce((a,x)=>a+(+x.custodia||0),0);
+  const receita = vis.reduce((a,x)=>a+(+x.receita||0),0);
   document.getElementById('totCustodia').textContent = fmt(custodia);
   document.getElementById('totReceita').textContent = fmt(receita);
-  document.getElementById('totReunioes').textContent = reun + ' de ' + S.clientes.length + ' clientes com reunião no mês';
+  document.getElementById('totReunioes').textContent = vis.length + ' clientes na base';
+}
+
+// ---- Detalhe expansível do cliente (Positivador + Diversificador + anotações) ----
+const _detAbertos = new Set();
+function toggleClienteDetalhe(id){
+  const row = document.getElementById('det-'+id);
+  const tg = document.getElementById('tg-'+id);
+  if(!row) return;
+  const aberto = row.style.display !== 'none';
+  if(aberto){ row.style.display='none'; _detAbertos.delete(id); if(tg) tg.textContent='▸'; return; }
+  row.style.display=''; _detAbertos.add(id); if(tg) tg.textContent='▾';
+  carregarDetalheCliente(id);
+}
+async function carregarDetalheCliente(id){
+  const c = S.clientes.find(x=>x.id===id); if(!c) return;
+  const box = document.getElementById('detbox-'+id); if(!box) return;
+  box.innerHTML = '<div style="color:var(--ink-soft);font-size:13px;">Carregando dados do Positivador e Diversificador…</div>';
+  let pos=null, ativos=[];
+  if(c.codigo){
+    try{ const r = await sbGet('clientes', '?id=eq.'+encodeURIComponent(c.codigo)); pos = (r&&r[0])||null; }catch(e){}
+    try{ ativos = await sbGet('ativos_clientes', '?cliente=eq.'+encodeURIComponent(c.codigo)+'&order=net.desc') || []; }catch(e){}
+  }
+  // Só pinta se o painel ainda está aberto
+  if(document.getElementById('detbox-'+id)) box.innerHTML = detalheClienteHTML(c, pos, ativos);
+}
+function detalheClienteHTML(c, pos, ativos){
+  const money = v => (v==null||v==='')?'—':'R$ '+Number(v).toLocaleString('pt-BR',{maximumFractionDigits:0});
+  const txt = v => (v==null||v==='')?'—':esc(String(v));
+  const modelo = c.modelo || 'Comission based';
+  let h = '';
+  // Anotações (editável, dentro do painel)
+  h += `<div style="margin-bottom:16px;">
+    <label style="display:block;font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--ink-soft);margin-bottom:5px;font-weight:600;">Anotações</label>
+    <textarea onchange="updCliente('${c.id}','notas',this.value)" placeholder="Anotações sobre o cliente…" style="width:100%;min-height:60px;resize:vertical;padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-family:inherit;font-size:13px;background:var(--cream-1,#fff);">${esc(c.notas||'')}</textarea>
+  </div>`;
+  // Resumo do hub
+  h += `<div style="display:flex;gap:18px;flex-wrap:wrap;margin-bottom:16px;font-size:13px;">
+    <div><span style="color:var(--ink-soft);">Código:</span> <b>${txt(c.codigo)}</b></div>
+    <div><span style="color:var(--ink-soft);">Tier:</span> <b>${txt(c.tier)}</b></div>
+    <div><span style="color:var(--ink-soft);">Modelo:</span> <b>${modelo}</b></div>
+    <div><span style="color:var(--ink-soft);">Custódia:</span> <b>${money(c.custodia)}</b></div>
+    <div><span style="color:var(--ink-soft);">Receita mês:</span> <b>${money(c.receita)}</b></div>
+  </div>`;
+  if(!c.codigo){
+    h += `<div style="font-size:13px;color:var(--ink-soft);">Cliente sem código do Positivador — sem dados importados.</div>`;
+    return h;
+  }
+  const grp = (titulo, pares) => {
+    let g = `<div style="margin-bottom:14px;"><div style="font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--amber);font-weight:700;margin-bottom:8px;">${titulo}</div><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px 18px;font-size:12.5px;">`;
+    pares.forEach(([k,v])=>{ g += `<div><span style="color:var(--ink-soft);">${k}</span><br><b>${v}</b></div>`; });
+    return g + '</div></div>';
+  };
+  if(pos){
+    h += grp('Cadastro', [
+      ['Status', txt(pos.status)], ['Segmento', txt(pos.segmento)],
+      ['Segmentação', txt(pos.segmentacao_cliente)], ['Suitability', txt(pos.suitability)],
+      ['Profissão', txt(pos.profissao)], ['Cadastro', txt(pos.data_cadastro)],
+      ['Nascimento', txt(pos.data_nascimento)], ['Tipo Pessoa', txt(pos.tipo_pessoa)],
+    ]);
+    h += grp('Patrimônio & Receita', [
+      ['Net em M', money(pos.net_em_m)], ['Net em M-1', money(pos.net_em_m_menos_1)],
+      ['Receita no mês', money(pos.receita_no_mes)], ['Receita Bovespa', money(pos.receita_bovespa)],
+      ['Receita RF Bancários', money(pos.receita_rf_bancarios)], ['Receita RF Privados', money(pos.receita_rf_privados)],
+      ['Aplic. Declarada', money(pos.aplicacao_financeira_declarada)],
+    ]);
+    h += grp('Captação no mês', [
+      ['Captação Bruta', money(pos.captacao_bruta_em_m)], ['Resgate', money(pos.resgate_em_m)],
+      ['Captação Líquida', money(pos.captacao_liquida_em_m)], ['Captação TED', money(pos.captacao_ted)],
+      ['Captação RF', money(pos.captacao_rf)], ['Captação PREV', money(pos.captacao_prev)],
+    ]);
+    h += grp('Alocação', [
+      ['Renda Fixa', money(pos.renda_fixa)], ['Renda Variável', money(pos.renda_variavel)],
+      ['Fundos', money(pos.fundos)], ['Fundos Imob.', money(pos.fundos_imobiliarios)],
+      ['Previdência', money(pos.previdencia)], ['Financeiro', money(pos.financeiro)],
+      ['Outros', money(pos.outros)],
+    ]);
+  } else {
+    h += `<div style="font-size:13px;color:var(--ink-soft);margin-bottom:14px;">Sem registro no Positivador (banco) para o código ${esc(c.codigo)}.</div>`;
+  }
+  // Diversificador
+  h += `<div style="font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--amber);font-weight:700;margin:6px 0 8px;">Diversificador — ativos</div>`;
+  if(ativos && ativos.length){
+    const tot = ativos.reduce((a,r)=>a+(+r.net||0),0);
+    h += '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:12px;">';
+    h += '<tr style="border-bottom:1px solid var(--line);"><th style="text-align:left;padding:5px 8px;">Ativo</th><th style="text-align:left;padding:5px 8px;">Classe</th><th style="text-align:left;padding:5px 8px;">Vencimento</th><th style="text-align:right;padding:5px 8px;">NET</th></tr>';
+    ativos.forEach(r=>{
+      h += `<tr style="border-bottom:1px solid var(--cream-2);">
+        <td style="padding:5px 8px;">${txt(r.ativo||r.sub_produto||r.produto)}</td>
+        <td style="padding:5px 8px;">${txt(r.classe)}</td>
+        <td style="padding:5px 8px;">${txt(r.data_vencimento)}</td>
+        <td style="padding:5px 8px;text-align:right;">${money(r.net)}</td>
+      </tr>`;
+    });
+    h += `<tr><td colspan="3" style="padding:6px 8px;font-weight:600;">Total (${ativos.length} ativos)</td><td style="padding:6px 8px;text-align:right;font-weight:600;">${money(tot)}</td></tr>`;
+    h += '</table></div>';
+  } else {
+    h += `<div style="font-size:13px;color:var(--ink-soft);">Nenhum ativo do Diversificador para este cliente.</div>`;
+  }
+  return h;
 }
 
 // ============================================================
@@ -9254,11 +9367,13 @@ const DIV_FIELD_MAP = {
 };
 
 // Classifica cada ativo do Diversificador nas mesmas classes usadas no Simulador de Carteira (scClasses)
-function classificarAtivoDiversificacao(produto, subProduto){
+function classificarAtivoDiversificacao(produto, subProduto, ativo){
   const p = (produto||'').trim();
   const s = (subProduto||'').trim();
+  const a = (ativo||'').toUpperCase();
+  // FII (inclui cetipados) — reconhece pelo nome do ativo mesmo sem sub_produto "Fundo Imobiliário"
+  if(s==='Fundo Imobiliário' || a.includes('FII')) return 'Fundos Imobiliários';
   if(p==='Renda Variável'){
-    if(s==='Fundo Imobiliário') return 'Fundos Imobiliários';
     return 'Renda Variável';
   }
   if(p==='Renda Fixa') return s==='Produto Estruturado' ? 'Estruturado / COE' : 'Renda Fixa';
@@ -9315,7 +9430,7 @@ function diversificacaoHandleFile(e){
           if(!isNaN(v) && v !== ''){ mapped[db] = parseFloat(v); return; }
           mapped[db] = v;
         });
-        mapped.classe = classificarAtivoDiversificacao(mapped.produto, mapped.sub_produto);
+        mapped.classe = classificarAtivoDiversificacao(mapped.produto, mapped.sub_produto, mapped.ativo);
         return mapped;
       }).filter(r => r.cliente);
       diversificacaoSetStatus(`${_diversificacaoRows.length} ativos encontrados no arquivo.`, 'ok');
