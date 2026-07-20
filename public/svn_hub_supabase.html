@@ -2758,18 +2758,23 @@ th.num{text-align:right;}
   <div class="view" id="view-planejamento">
     <div class="grid c3" style="margin-bottom:18px;">
       <div class="kpi dark"><div class="l">Potencial total</div><div class="v" id="planPotencial">R$0</div><div class="s" id="planCount">0 linhas</div></div>
-      <div class="kpi"><div class="l">Total realizado</div><div class="v" id="planRealizado">R$0</div><div class="s">status Feito / Lançado</div></div>
+      <div class="kpi"><div class="l">Total realizado</div><div class="v" id="planRealizado">R$0</div><div class="s">Feito / Reservado + passiva</div></div>
       <div class="kpi"><div class="l">Em aberto</div><div class="v" id="planAberto">R$0</div><div class="s">potencial ainda não realizado</div></div>
     </div>
 
     <div class="card">
       <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:14px;">
         <div><h2>Pipeline de Receita</h2><div class="desc" style="margin:0;">Receita gerada = valor × ROA. Selecione o produto para preencher o ROA automaticamente.</div></div>
-        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end;">
+          <div class="field" style="max-width:200px;">
+            <label>Receita passiva (R$)</label>
+            <input type="text" inputmode="numeric" id="planPassiva" placeholder="R$0" oninput="maskMoeda(this)" onchange="updPlanPassiva(parseMoeda(this))">
+          </div>
           <button class="btn ghost" onclick="exportPlanReceitaXLSX()">⬇ Exportar XLSX</button>
           <button class="btn solid" onclick="addPlanRow()">+ Linha</button>
         </div>
       </div>
+      <div class="footer-note" style="margin:-4px 0 12px;">Receita passiva não é boleta — soma direto no realizado e no potencial.</div>
       <div style="overflow-x:auto;">
       <table id="tblPlanReceita">
         <thead><tr>
@@ -4908,7 +4913,8 @@ const PLAN_PRODUTOS_DEFAULT = [
   {nome:'Credmei', roa:1.8},
   {nome:'Jeitto', roa:1.8}
 ];
-const PLAN_STATUS = ['Não Feito','Mensagem enviada','Push enviado','Reserva','Feito','Lançado','Passivo'];
+const PLAN_STATUS = ['Feito','Não Feito','Reservado','Mensagem enviada','Push enviado'];
+const PLAN_STATUS_REALIZADO = ['Feito','Reservado'];
 
 let S = {
   mesAtual: mesHoje(),
@@ -4916,6 +4922,7 @@ let S = {
   r2decks: [],
   pipeline: [],
   planReceita: [],
+  planReceitaPassiva: 0,
   planProdutos: PLAN_PRODUTOS_DEFAULT.map(p=>({...p})),
   materiais: MAT_DEFAULT,
   meses: {}
@@ -4973,6 +4980,13 @@ async function load(){
   if(!Array.isArray(S.r2decks)) S.r2decks = [];
   if(!Array.isArray(S.planReceita)) S.planReceita = [];
   if(!Array.isArray(S.planProdutos) || !S.planProdutos.length) S.planProdutos = PLAN_PRODUTOS_DEFAULT.map(p=>({...p}));
+  if(typeof S.planReceitaPassiva !== 'number') S.planReceitaPassiva = 0;
+  // Migra status antigos para o novo conjunto
+  const _stMap = {'Reserva':'Reservado','Lançado':'Feito','Passivo':'Feito'};
+  S.planReceita.forEach(r=>{
+    if(_stMap[r.status]) r.status = _stMap[r.status];
+    if(!PLAN_STATUS.includes(r.status)) r.status = 'Não Feito';
+  });
   S.clientes.forEach(c=>{
     if(!c.codigo && /^\d+$/.test((c.nome||'').trim()) && CODIGO_NOME[c.nome.trim()]){
       c.codigo = c.nome.trim();
@@ -5457,19 +5471,26 @@ function renderPlanReceita(){
     </tr>`;
   });
   body.innerHTML = html || '<tr><td colspan="7" class="empty">Nenhuma linha. Clique em “+ Linha”.</td></tr>';
-  // Totais
-  const realizadoStatus = ['Feito','Lançado'];
-  const potencial = S.planReceita.reduce((a,r)=>a+planReceitaLinha(r),0);
-  const realizado = S.planReceita.filter(r=>realizadoStatus.includes(r.status)).reduce((a,r)=>a+planReceitaLinha(r),0);
+  // Totais — receita passiva entra em realizado e potencial (não é boleta)
+  const passiva = +S.planReceitaPassiva||0;
+  const potencialBoletas = S.planReceita.reduce((a,r)=>a+planReceitaLinha(r),0);
+  const realizadoBoletas = S.planReceita.filter(r=>PLAN_STATUS_REALIZADO.includes(r.status)).reduce((a,r)=>a+planReceitaLinha(r),0);
+  const potencial = potencialBoletas + passiva;
+  const realizado = realizadoBoletas + passiva;
   const totValor = S.planReceita.reduce((a,r)=>a+(+r.valor||0),0);
   const set = (id,val)=>{ const el=document.getElementById(id); if(el) el.textContent=val; };
   set('planTotValor', fmt(totValor));
-  set('planTotReceita', fmt(potencial));
-  set('planTotStatus', S.planReceita.length + ' linhas');
+  set('planTotReceita', fmt(potencialBoletas));
+  set('planTotStatus', S.planReceita.length + ' linhas · + passiva ' + fmt(passiva));
   set('planPotencial', fmt(potencial));
-  set('planCount', S.planReceita.length + ' linhas');
+  set('planCount', S.planReceita.length + ' linhas + passiva');
   set('planRealizado', fmt(realizado));
   set('planAberto', fmt(potencial - realizado));
+  const pp = document.getElementById('planPassiva'); if(pp && document.activeElement!==pp) pp.value = passiva ? fmt(passiva) : '';
+}
+function updPlanPassiva(v){
+  S.planReceitaPassiva = +v||0;
+  save(); renderPlanReceita();
 }
 function renderPlanProdutos(){
   const body = document.getElementById('planProdBody'); if(!body) return;
