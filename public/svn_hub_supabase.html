@@ -2686,13 +2686,18 @@ th.num{text-align:right;}
         </div>
       </div>
       <style>
-        #cardClientes{resize:horizontal; overflow:auto; max-width:100%; min-width:340px;}
+        .main.wide-mode{max-width:none;}
         #tblClientes{table-layout:fixed; width:max-content; min-width:100%;}
         #tblClientes th{position:relative; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
         #tblClientes td{overflow:hidden;}
         #tblClientes td input, #tblClientes td select{max-width:100%; box-sizing:border-box;}
-        #tblClientes th .col-resizer{position:absolute; top:0; right:0; width:8px; height:100%; cursor:col-resize; user-select:none; touch-action:none;}
-        #tblClientes th .col-resizer:hover{background:var(--amber-soft);}
+        #tblClientes th .col-resizer{position:absolute; top:0; right:0; width:10px; height:100%; cursor:col-resize; user-select:none; touch-action:none; border-right:2px solid var(--line);}
+        #tblClientes th .col-resizer:hover{border-right-color:var(--amber);}
+        #cliPickPop{position:absolute; z-index:9999; display:none; background:#fff; border:1px solid var(--line); border-radius:10px; box-shadow:0 12px 30px rgba(0,0,0,.14); max-height:280px; overflow-y:auto; padding:5px; font-size:13px;}
+        #cliPickPop .cli-pick-item{display:flex; justify-content:space-between; align-items:center; gap:12px; padding:8px 10px; border-radius:7px; cursor:pointer;}
+        #cliPickPop .cli-pick-item:hover{background:var(--amber-soft);}
+        #cliPickPop .cli-pick-item .cod{color:var(--ink-soft); font-size:11.5px;}
+        #cliPickPop .cli-pick-empty{padding:10px; color:var(--ink-soft);}
       </style>
       <div style="overflow-x:auto;">
       <table id="tblClientes">
@@ -5087,6 +5092,7 @@ function showView(v){
   document.getElementById('viewSub').textContent = TITLES[v][1];
   document.getElementById('topbarRight').style.display = GESTAO_VIEWS.includes(v) ? 'flex' : 'none';
   document.querySelector('.main').classList.toggle('deck-mode', ['fee-fixo','svn-r2','p10k'].includes(v));
+  document.querySelector('.main').classList.toggle('wide-mode', v==='clientes');
   if(v==='svn-r2' && window.r2ShowChooser) window.r2ShowChooser();
   if(v==='p10k' && window.fitTree) requestAnimationFrame(()=>requestAnimationFrame(window.fitTree));
   renderAll();
@@ -5422,6 +5428,7 @@ function renderClientes(){
   // Recarrega painéis de detalhe que estavam abertos
   _detAbertos.forEach(id=>{ if(document.getElementById('detbox-'+id)) carregarDetalheCliente(id); });
   renderTotais();
+  initResizableCols('tblClientes');
 }
 function clienteNomeado(c){ const n=(c.nome||'').trim(); return n && !/^Cliente \d+$/.test(n); }
 // Soma das possibilidades de captação (pipeline) atreladas a este cliente por nome ou código
@@ -5470,6 +5477,57 @@ function initResizableCols(tableId){
 document.addEventListener('DOMContentLoaded', ()=> initResizableCols('tblClientes'));
 
 // ============================================================
+// SELETOR DE CLIENTE (dropdown com busca — tema do hub)
+// ============================================================
+let _cliPickInput = null;
+function _cliPickEl(){
+  let pop = document.getElementById('cliPickPop');
+  if(!pop){
+    pop = document.createElement('div');
+    pop.id = 'cliPickPop';
+    document.body.appendChild(pop);
+  }
+  return pop;
+}
+function cliPickOpen(inp){
+  _cliPickInput = inp;
+  const pop = _cliPickEl();
+  cliPickRender();
+  const r = inp.getBoundingClientRect();
+  pop.style.left = (window.scrollX + r.left) + 'px';
+  pop.style.top = (window.scrollY + r.bottom + 4) + 'px';
+  pop.style.minWidth = Math.max(240, r.width) + 'px';
+  pop.style.display = 'block';
+}
+function cliPickRender(){
+  if(!_cliPickInput) return;
+  const q = (_cliPickInput.value||'').trim().toLowerCase();
+  const list = S.clientes.filter(clienteNomeado).filter(c=>{
+    if(!q) return true;
+    return (c.nome||'').toLowerCase().includes(q) || (c.codigo && String(c.codigo).includes(q));
+  }).sort((a,b)=>(a.nome||'').localeCompare(b.nome||'')).slice(0,60);
+  const pop = _cliPickEl();
+  pop.innerHTML = list.length
+    ? list.map(c=>`<div class="cli-pick-item" data-nome="${esc(c.nome)}"><span>${esc(c.nome)}</span>${c.codigo?`<span class="cod">${esc(c.codigo)}</span>`:''}</div>`).join('')
+    : '<div class="cli-pick-empty">Nenhum cliente encontrado</div>';
+  pop.querySelectorAll('.cli-pick-item').forEach(it=>{
+    it.addEventListener('mousedown', e=>{
+      e.preventDefault();
+      const nome = it.getAttribute('data-nome');
+      const inp = _cliPickInput;
+      inp.value = nome;
+      inp.dispatchEvent(new Event('change', {bubbles:true}));
+      cliPickClose();
+    });
+  });
+}
+function cliPickClose(){ const pop = document.getElementById('cliPickPop'); if(pop) pop.style.display='none'; _cliPickInput = null; }
+document.addEventListener('mousedown', e=>{
+  if(_cliPickInput && e.target!==_cliPickInput && !(e.target.closest && e.target.closest('#cliPickPop'))) cliPickClose();
+});
+document.addEventListener('scroll', ()=>{ if(_cliPickInput) cliPickClose(); }, true);
+
+// ============================================================
 // PLANEJAMENTO DE RECEITA (pipeline de receita por cliente/produto)
 // ============================================================
 function planRoaDoProduto(nome){
@@ -5502,7 +5560,7 @@ function renderPlanReceita(){
     const opts = ['', ...prodOptions].map(o=>`<option ${o===r.produto?'selected':''}>${esc(o)}</option>`).join('');
     const stOpts = PLAN_STATUS.map(s=>`<option ${s===r.status?'selected':''}>${s}</option>`).join('');
     html += `<tr>
-      <td><input type="text" list="clienteList" value="${esc(r.cliente)}" placeholder="Cliente" oninput="resolveClienteCodigo(this)" onchange="updPlan('${r.id}','cliente',this.value)"></td>
+      <td><input type="text" value="${esc(r.cliente)}" placeholder="Cliente" autocomplete="off" onfocus="cliPickOpen(this)" oninput="cliPickRender()" onchange="updPlan('${r.id}','cliente',this.value)"></td>
       <td class="num"><input type="text" inputmode="numeric" value="${r.valor?fmt(r.valor):''}" placeholder="R$0" style="text-align:right" oninput="maskMoeda(this)" onchange="updPlan('${r.id}','valor',parseMoeda(this))"></td>
       <td><select onchange="updPlan('${r.id}','produto',this.value)">${opts}</select></td>
       <td class="num"><input type="number" step="0.01" value="${r.roa!=null&&r.roa!==''?r.roa:''}" placeholder="%" style="text-align:right; width:72px;" onchange="updPlan('${r.id}','roa',this.value)"></td>
