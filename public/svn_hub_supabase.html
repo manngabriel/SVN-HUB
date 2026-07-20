@@ -2569,6 +2569,7 @@ th.num{text-align:right;}
   </div>
   <div class="nav-label">Gestão</div>
   <button class="nav-item active" id="nav-painel" onclick="showView('painel')"><span class="ic">◈</span>Painel</button>
+  <button class="nav-item" id="nav-tarefas" onclick="showView('tarefas')"><span class="ic">✓</span>Tarefas do dia</button>
   <button class="nav-item" id="nav-clientes" onclick="showView('clientes')"><span class="ic">☰</span>Base de clientes</button>
   <button class="nav-item" id="nav-captacao" onclick="showView('captacao')"><span class="ic">↗</span>Captação &amp; Pipeline</button>
   <button class="nav-item" id="nav-planejamento" onclick="showView('planejamento')"><span class="ic">▦</span>Planejamento de Receita</button>
@@ -2650,14 +2651,14 @@ th.num{text-align:right;}
         <div class="eyebrow">Entrada rápida</div>
         <div class="inline-fields" style="margin-bottom:12px;">
           <div class="field" style="flex:1;"><label>Receita do mês</label><input type="text" inputmode="numeric" id="inReceita" oninput="maskMoeda(this)" onchange="setMeta('receita', parseMoeda(this))"></div>
-          <div class="field" style="flex:1;"><label>Meta de receita</label><input type="text" inputmode="numeric" id="inMetaReceita" oninput="maskMoeda(this)" onchange="setMeta('metaReceita', parseMoeda(this))"></div>
+          <div class="field" style="flex:1;"><label>Custódia MB</label><input type="text" inputmode="numeric" id="inMbCustodia" oninput="maskMoeda(this)" onchange="setMeta('mbCustodia', parseMoeda(this))"></div>
+          <div class="field" style="flex:1;"><label>Meta de receita (auto)</label><input type="text" id="inMetaReceita" readonly title="(Custódia XP + Custódia MB) × 6%" style="background:var(--cream-2);"></div>
+        </div>
+        <div class="inline-fields" style="margin-bottom:12px;">
           <div class="field" style="flex:1;"><label>Captação líquida</label><input type="text" inputmode="numeric" id="inCaptacao" oninput="maskMoeda(this)" onchange="setMeta('captacao', parseMoeda(this))"></div>
           <div class="field" style="flex:1;"><label>Meta de captação</label><input type="text" inputmode="numeric" id="inMetaCaptacao" oninput="maskMoeda(this)" onchange="setMeta('metaCaptacao', parseMoeda(this))"></div>
         </div>
-        <div class="inline-fields" style="margin-bottom:12px;">
-          <div class="field" style="flex:1;"><label>Clientes c/ produto de campanha (mês)</label><input type="number" id="inPenetracaoQtd" onchange="setMeta('penetracaoQtd', +this.value)"></div>
-        </div>
-        <div class="footer-note">Penetração de campanha: meta fixa de 20% da base. Funil (leads, R1, R2, contas) fica na aba Captação &amp; Pipeline.</div>
+        <div class="footer-note">Meta de receita = (Custódia XP da base + Custódia MB) × 6%. Penetração de campanha (meta 20% da base) conta automático os clientes com linha Feito/Reservado no Planejamento de Receita.</div>
       </div>
     </div>
 
@@ -2688,6 +2689,36 @@ th.num{text-align:right;}
       </div>
     </div>
 
+  </div>
+
+  <!-- ================= TAREFAS (TO-DO) ================= -->
+  <div class="view" id="view-tarefas">
+    <style>
+      #view-tarefas .todo-item{display:flex; align-items:center; gap:10px; padding:9px 4px; border-bottom:1px solid var(--cream-2);}
+      #view-tarefas .todo-item.done .todo-txt{text-decoration:line-through; color:var(--ink-soft);}
+      #view-tarefas .todo-txt{flex:1; min-width:120px; border:none; background:transparent; font-family:'Inter',sans-serif; font-size:14px; color:var(--ink); outline:none; padding:2px 0;}
+      #view-tarefas .todo-nocli{font-size:11.5px; color:var(--ink-soft); font-style:italic;}
+      #view-tarefas .todo-atras{font-size:11px; color:#c0392b; font-weight:600; white-space:nowrap;}
+      #view-tarefas .todo-date{border:1px solid var(--line); border-radius:7px; padding:3px 6px; font-size:12px; background:#fff;}
+      #view-tarefas .todo-date-lbl{font-weight:600; color:var(--amber); min-width:44px;}
+    </style>
+    <div class="card">
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:12px;">
+        <div><h2>Tarefas do dia</h2><div class="desc" style="margin:0;">As tarefas de hoje resetam a cada dia. As não concluídas seguem aparecendo; use a data ou +1d para adiar.</div></div>
+        <div id="todoHojeLbl" style="font-size:13px; color:var(--ink-soft);"></div>
+      </div>
+      <div class="inline-fields" style="margin-bottom:14px;">
+        <div class="field" style="flex:2;"><label>Nova tarefa</label><input type="text" id="todoTexto" placeholder="O que precisa ser feito…" onkeydown="if(event.key==='Enter')addTodo()"></div>
+        <div class="field" style="flex:1;"><label>Cliente (opcional)</label><input type="text" id="todoCliente" placeholder="Sem cliente" autocomplete="off" onfocus="cliPickOpen(this)" oninput="cliPickRender()"></div>
+        <div class="field" style="flex:0;"><label>&nbsp;</label><button class="btn solid" onclick="addTodo()">+ Adicionar</button></div>
+      </div>
+      <div id="todosHoje"></div>
+    </div>
+    <div class="card">
+      <div class="eyebrow">Agendadas / adiadas</div>
+      <div class="desc">Tarefas marcadas para os próximos dias.</div>
+      <div id="todosFuturos" style="margin-top:8px;"></div>
+    </div>
   </div>
 
   <!-- ================= CLIENTES ================= -->
@@ -4979,6 +5010,7 @@ let S = {
   clientes: [],
   r2decks: [],
   pipeline: [],
+  todos: [],
   planReceita: [],
   planReceitaPassiva: 0,
   planProdutos: PLAN_PRODUTOS_DEFAULT.map(p=>({...p})),
@@ -5036,6 +5068,7 @@ async function load(){
   }
   if(!S.materiais || !S.materiais.length) S.materiais = MAT_DEFAULT;
   if(!Array.isArray(S.r2decks)) S.r2decks = [];
+  if(!Array.isArray(S.todos)) S.todos = [];
   if(!Array.isArray(S.planReceita)) S.planReceita = [];
   if(!Array.isArray(S.planProdutos) || !S.planProdutos.length) S.planProdutos = PLAN_PRODUTOS_DEFAULT.map(p=>({...p}));
   if(typeof S.planReceitaPassiva !== 'number') S.planReceitaPassiva = 0;
@@ -5083,10 +5116,18 @@ function esc(t){ return String(t??'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'
 const META_PENETRACAO = 20;
 function calc(){
   const M = ensureMes(S.mesAtual);
+  // Meta de receita automática: (custódia XP da base + custódia MB) × 6%
+  const custodiaXP = S.clientes.filter(clienteNomeado).reduce((a,x)=>a+(+x.custodia||0),0);
+  const mbCustodia = +M.mbCustodia||0;
+  M.metaReceita = (custodiaXP + mbCustodia) * 0.06;
   const receitaPct = M.metaReceita>0 ? (M.receita/M.metaReceita)*100 : 0;
   const captacaoPct = M.metaCaptacao>0 ? (M.captacao/M.metaCaptacao)*100 : 0;
-  const totalClientes = S.clientes.length;
-  const penetracaoPct = totalClientes>0 ? (M.penetracaoQtd/totalClientes)*100 : 0;
+  const totalClientes = S.clientes.filter(clienteNomeado).length;
+  // Penetração automática: clientes com linha Feito/Reservado no Planejamento de Receita
+  const feitos = new Set();
+  (S.planReceita||[]).forEach(r=>{ if(PLAN_STATUS_REALIZADO.includes(r.status)){ const n=(r.cliente||'').trim().toLowerCase(); if(n) feitos.add(n); } });
+  const penetracaoQtd = feitos.size;
+  const penetracaoPct = totalClientes>0 ? (penetracaoQtd/totalClientes)*100 : 0;
   const penetracaoGoalPct = (penetracaoPct/META_PENETRACAO)*100;
   const pj2Pts = M.pj2r1*10 + M.pj2r2*20 + M.pj2fech*30 + M.pj2plan*10;
   const pj2Pct = (pj2Pts/120)*100;
@@ -5098,7 +5139,7 @@ function calc(){
   if(M.captacao > 1000000) tripePts += 10;
   const tripePct = (tripePts/60)*100;
   const resultado = (receitaPct + penetracaoGoalPct + captacaoPct) / 3;
-  return {M, receitaPct, captacaoPct, totalClientes, penetracaoPct, penetracaoGoalPct, pj2Pts, pj2Pct, funil, tripePts, tripePct, resultado};
+  return {M, receitaPct, captacaoPct, totalClientes, penetracaoQtd, penetracaoPct, penetracaoGoalPct, pj2Pts, pj2Pct, funil, tripePts, tripePct, resultado};
 }
 
 // ============================================================
@@ -5106,6 +5147,7 @@ function calc(){
 // ============================================================
 const TITLES = {
   painel:['Painel','Visão geral do mês — receita, captação e qualidade.'],
+  tarefas:['Tarefas do dia','Lista de afazeres do dia, por cliente ou avulsa, com adiamento.'],
   clientes:['Base de clientes','Custódia, receita, tierização e a próxima oportunidade de cada cliente.'],
   captacao:['Captação & Pipeline','Do lead ao fechamento: funil, negócios em andamento e captação líquida.'],
   planejamento:['Planejamento de Receita','Pipeline de receita por cliente e produto, com ROA e receita gerada.'],
@@ -5120,7 +5162,7 @@ const TITLES = {
   positivador:['Upload Positivador','Importa Positivador e Diversificador (.xlsx) e sincroniza com a Base de clientes.']
 };
 
-const GESTAO_VIEWS = ['painel','clientes','captacao','planejamento','pj2'];
+const GESTAO_VIEWS = ['painel','tarefas','clientes','captacao','planejamento','pj2'];
 
 function showView(v){
   document.querySelectorAll('.view').forEach(el=>el.classList.remove('active'));
@@ -5157,6 +5199,7 @@ function renderAll(){
   renderClientes();
   renderClienteList();
   renderPipeline();
+  renderTodos();
   renderPlanReceita();
   renderPlanProdutos();
   renderPj2();
@@ -5196,7 +5239,7 @@ function renderPainel(){
   document.getElementById('donutN').textContent = pct(c.resultado);
   // entrada rápida
   fillMoeda('inReceita', M.receita); fillMoeda('inMetaReceita', M.metaReceita); fillMoeda('inCaptacao', M.captacao);
-  fillMoeda('inMetaCaptacao', M.metaCaptacao); fill('inPenetracaoQtd', M.penetracaoQtd);
+  fillMoeda('inMetaCaptacao', M.metaCaptacao); fillMoeda('inMbCustodia', M.mbCustodia);
   // modelo de remuneração (fee fixo × comission based)
   renderPainelModelo();
   renderPainelOportunidades();
@@ -5606,6 +5649,50 @@ document.addEventListener('mousedown', e=>{
   if(_cliPickInput && e.target!==_cliPickInput && !(e.target.closest && e.target.closest('#cliPickPop'))) cliPickClose();
 });
 document.addEventListener('scroll', ()=>{ if(_cliPickInput) cliPickReposition(); }, true);
+
+// ============================================================
+// TAREFAS (TO-DO diário)
+// ============================================================
+function todayISO(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function _isoMais(iso, dias){ const d=new Date(iso+'T00:00:00'); d.setDate(d.getDate()+(dias||0)); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function _fmtDataCurta(iso){ if(!iso) return ''; const [y,m,d]=iso.split('-'); return d+'/'+m; }
+function addTodo(){
+  const inp = document.getElementById('todoTexto'); if(!inp) return;
+  const texto = (inp.value||'').trim(); if(!texto) return;
+  const cli = (document.getElementById('todoCliente').value||'').trim();
+  S.todos.push({id:m8(), texto, cliente:cli, data:todayISO(), feito:false});
+  inp.value=''; document.getElementById('todoCliente').value='';
+  renderTodos(); save();
+}
+function toggleTodo(id){ const t=S.todos.find(x=>x.id===id); if(!t) return; t.feito=!t.feito; renderTodos(); save(); }
+function updTodo(id,k,v){ const t=S.todos.find(x=>x.id===id); if(!t) return; t[k]=v; save(); renderTodos(); }
+function delTodo(id){ S.todos=S.todos.filter(x=>x.id!==id); renderTodos(); save(); }
+function adiarTodo(id, dias){ const t=S.todos.find(x=>x.id===id); if(!t) return; t.data=_isoMais(t.data||todayISO(), dias||1); renderTodos(); save(); }
+function renderTodos(){
+  const hojeEl = document.getElementById('todosHoje'); if(!hojeEl) return;
+  const today = todayISO();
+  const lbl = document.getElementById('todoHojeLbl');
+  if(lbl) lbl.textContent = new Date().toLocaleDateString('pt-BR',{weekday:'long', day:'2-digit', month:'long'});
+  const pend = S.todos.filter(t=>!t.feito && (t.data||today)<=today).sort((a,b)=>(a.data||'').localeCompare(b.data||''));
+  const feitos = S.todos.filter(t=>t.feito && (t.data||today)===today);
+  const linha = (t)=>`<div class="todo-item ${t.feito?'done':''}">
+    <input type="checkbox" ${t.feito?'checked':''} onchange="toggleTodo('${t.id}')" style="accent-color:var(--amber); width:16px; height:16px; flex:none;">
+    <input type="text" value="${esc(t.texto)}" onchange="updTodo('${t.id}','texto',this.value)" class="todo-txt">
+    ${t.cliente?`<span class="tag">${esc(t.cliente)}</span>`:'<span class="todo-nocli">sem cliente</span>'}
+    ${(!t.feito && (t.data||today)<today)?`<span class="todo-atras">atrasada ${_fmtDataCurta(t.data)}</span>`:''}
+    <input type="date" value="${t.data||today}" onchange="updTodo('${t.id}','data',this.value)" title="Adiar para..." class="todo-date">
+    <button class="btn sm ghost" onclick="adiarTodo('${t.id}',1)" title="Adiar 1 dia" style="flex:none;">+1d</button>
+    <button class="btn danger" onclick="delTodo('${t.id}')" style="flex:none;">×</button>
+  </div>`;
+  hojeEl.innerHTML = (pend.map(linha).join('') + feitos.map(linha).join('')) || '<div class="empty">Nenhuma tarefa para hoje. Adicione acima.</div>';
+  const fut = document.getElementById('todosFuturos');
+  if(fut){
+    const futuros = S.todos.filter(t=>!t.feito && (t.data||today)>today).sort((a,b)=>(a.data||'').localeCompare(b.data||''));
+    fut.innerHTML = futuros.length
+      ? futuros.map(t=>`<div class="todo-item"><span class="todo-date-lbl">${_fmtDataCurta(t.data)}</span><input type="text" value="${esc(t.texto)}" onchange="updTodo('${t.id}','texto',this.value)" class="todo-txt">${t.cliente?`<span class="tag">${esc(t.cliente)}</span>`:''}<button class="btn sm ghost" onclick="updTodo('${t.id}','data','${today}')" style="flex:none;">trazer p/ hoje</button><button class="btn danger" onclick="delTodo('${t.id}')" style="flex:none;">×</button></div>`).join('')
+      : '<div class="empty">Nada agendado para os próximos dias.</div>';
+  }
+}
 
 // ============================================================
 // PLANEJAMENTO DE RECEITA (pipeline de receita por cliente/produto)
