@@ -2613,7 +2613,7 @@ th.num{text-align:right;}
     <div class="grid c4" style="margin-bottom:18px;">
       <div class="kpi dark"><div class="l">Custódia da base</div><div class="v" id="kpiCustodia">R$0</div><div class="s" id="kpiClientes">0 clientes</div></div>
       <div class="kpi"><div class="l">Receita escritório · mês</div><div class="v" id="kpiReceita">R$0</div><div class="s" id="kpiReceitaMeta">meta R$18.200</div></div>
-      <div class="kpi"><div class="l">Captação líquida · mês</div><div class="v" id="kpiCaptacao">R$0</div><div class="s" id="kpiPipeline">pipeline ponderado R$0</div></div>
+      <div class="kpi"><div class="l">Captação líquida · mês</div><div class="v" id="kpiCaptacao">R$0</div><div class="s"><b>Potencial de captação:</b> <span id="kpiPipeline">R$0</span></div></div>
       <div class="kpi"><div class="l">Funil de conversão</div><div class="v" id="kpiFunil">—</div><div class="s" id="kpiFunilDet">leads → contas</div></div>
     </div>
 
@@ -5032,8 +5032,7 @@ function renderPainel(){
   document.getElementById('kpiReceitaMeta').textContent = 'meta ' + fmt(M.metaReceita) + ' · ' + pct(c.receitaPct);
   document.getElementById('kpiCaptacao').textContent = fmt(M.captacao);
   const pipeTotal = S.pipeline.reduce((a,d)=>a+(+d.valor||0),0);
-  const pond = S.pipeline.reduce((a,d)=>a+(+d.valor||0)*(clamp(+d.prob||0,0,100)/100),0);
-  document.getElementById('kpiPipeline').textContent = 'potencial ' + fmt(pipeTotal) + ' · ponderado ' + fmt(pond);
+  document.getElementById('kpiPipeline').textContent = fmt(pipeTotal);
   document.getElementById('kpiFunil').textContent = M.leads>0 ? pct(c.funil) : '—';
   document.getElementById('kpiFunilDet').textContent = `${M.leads||0} leads · ${M.r1||0} R1 · ${M.r2||0} R2 · ${M.contas||0} contas`;
   // metas bars
