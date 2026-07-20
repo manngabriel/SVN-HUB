@@ -2692,8 +2692,10 @@ th.num{text-align:right;}
         #tblClientes th{position:relative; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
         #tblClientes td{overflow:hidden;}
         #tblClientes td input, #tblClientes td select{max-width:100%; box-sizing:border-box;}
-        #tblClientes th .col-resizer{position:absolute; top:0; right:0; width:10px; height:100%; cursor:col-resize; user-select:none; touch-action:none; border-right:2px solid var(--line);}
-        #tblClientes th .col-resizer:hover{border-right-color:var(--amber);}
+        #tblClientes th, #tblClientes td{border-right:1px solid rgba(0,0,0,.045);}
+        #tblClientes th:last-child, #tblClientes td:last-child{border-right:none;}
+        #tblClientes th .col-resizer{position:absolute; top:0; right:0; width:10px; height:100%; cursor:col-resize; user-select:none; touch-action:none;}
+        #tblClientes th .col-resizer:hover{background:rgba(190,127,73,.12);}
         #cliPickPop{position:absolute; z-index:9999; display:none; background:#fff; border:1px solid var(--line); border-radius:10px; box-shadow:0 12px 30px rgba(0,0,0,.14); max-height:280px; overflow-y:auto; padding:5px; font-size:13px;}
         #cliPickPop .cli-pick-item{display:flex; justify-content:space-between; align-items:center; gap:12px; padding:8px 10px; border-radius:7px; cursor:pointer;}
         #cliPickPop .cli-pick-item:hover{background:var(--amber-soft);}
