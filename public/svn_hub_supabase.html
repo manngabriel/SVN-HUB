@@ -2699,6 +2699,11 @@ th.num{text-align:right;}
           <th onclick="sortClientes('tier')">Tier</th>
           <th class="num noclick">Poss. captação</th>
           <th class="noclick">Modelo</th>
+          <th class="noclick" style="text-align:center;">Seguro</th>
+          <th class="noclick" style="text-align:center;">Consórcio</th>
+          <th class="noclick" style="text-align:center;">MB</th>
+          <th class="noclick" style="text-align:center;">Intern.</th>
+          <th class="noclick" style="text-align:center;">Fin. Plan.</th>
           <th class="noclick"></th>
         </tr></thead>
         <tbody id="clientesBody"></tbody>
@@ -2710,7 +2715,7 @@ th.num{text-align:right;}
           <td class="num" id="totReceita" style="font-weight:600;"></td>
           <td></td>
           <td class="num" id="totPossCap" style="font-weight:600;"></td>
-          <td colspan="2" id="totReunioes" style="color:var(--ink-soft); font-size:12px;"></td>
+          <td colspan="7" id="totReunioes" style="color:var(--ink-soft); font-size:12px;"></td>
         </tr></tfoot>
       </table>
       </div>
@@ -5381,6 +5386,8 @@ function renderClientes(){
   arr.forEach(c=>{
     const modelo = c.modelo || 'Comission based';
     const aberto = _detAbertos.has(c.id);
+    const ab = c.abordagens || {};
+    const chk = (k)=>`<td style="text-align:center;"><input type="checkbox" ${ab[k]?'checked':''} style="accent-color:var(--amber); width:15px; height:15px;" onchange="updClienteAbordagem('${c.id}','${k}',this.checked)"></td>`;
     html += `<tr class="cli-main">
       <td style="text-align:center;"><button class="cli-toggle" id="tg-${c.id}" onclick="toggleClienteDetalhe('${c.id}')" title="Detalhes" style="border:none;background:transparent;cursor:pointer;font-size:14px;color:var(--amber);padding:2px 6px;">${aberto?'▾':'▸'}</button></td>
       <td><input type="text" value="${esc(c.nome)}" placeholder="Nome" onchange="updCliente('${c.id}','nome',this.value)"></td>
@@ -5397,11 +5404,12 @@ function renderClientes(){
         <option ${modelo==='Comission based'?'selected':''}>Comission based</option>
         <option ${modelo==='Fee Fixo'?'selected':''}>Fee Fixo</option>
       </select>${modelo==='Fee Fixo'?`<input type="number" value="${c.feeTaxa!=null&&c.feeTaxa!==''?c.feeTaxa:''}" min="0" step="0.05" placeholder="% a.a" title="Taxa anual combinada (%)" style="width:74px; margin-top:4px; text-align:right;" onchange="updCliente('${c.id}','feeTaxa',parseFloat(this.value)||0)">`:''}</td>
+      ${chk('seguro')}${chk('consorcio')}${chk('mb')}${chk('internacional')}${chk('planning')}
       <td><button class="btn danger" title="Remover" onclick="delCliente('${c.id}')">×</button></td>
     </tr>
-    <tr class="cli-detalhe" id="det-${c.id}" style="${aberto?'':'display:none;'}"><td colspan="9" style="background:var(--cream-2); padding:0;"><div id="detbox-${c.id}" style="padding:16px 18px;"></div></td></tr>`;
+    <tr class="cli-detalhe" id="det-${c.id}" style="${aberto?'':'display:none;'}"><td colspan="14" style="background:var(--cream-2); padding:0;"><div id="detbox-${c.id}" style="padding:16px 18px;"></div></td></tr>`;
   });
-  document.getElementById('clientesBody').innerHTML = html || '<tr><td colspan="9" class="empty">Adicione o primeiro cliente da base.</td></tr>';
+  document.getElementById('clientesBody').innerHTML = html || '<tr><td colspan="14" class="empty">Adicione o primeiro cliente da base.</td></tr>';
   // Recarrega painéis de detalhe que estavam abertos
   _detAbertos.forEach(id=>{ if(document.getElementById('detbox-'+id)) carregarDetalheCliente(id); });
   renderTotais();
@@ -5579,15 +5587,6 @@ function detalheClienteHTML(c, pos, ativos){
     <div><span style="color:var(--ink-soft);">Modelo:</span> <b>${modelo}</b></div>
     <div><span style="color:var(--ink-soft);">Custódia:</span> <b>${money(c.custodia)}</b></div>
     <div><span style="color:var(--ink-soft);">Receita mês:</span> <b>${money(c.receita)}</b></div>
-  </div>`;
-  // Abordagens já feitas
-  const ab = c.abordagens || {};
-  const cats = [['seguro','Seguro'],['consorcio','Consórcio'],['mb','MB'],['internacional','Internacional'],['planning','Financial Planning']];
-  h += `<div style="margin-bottom:16px;">
-    <div style="font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--amber);font-weight:700;margin-bottom:8px;">Abordagens já feitas</div>
-    <div style="display:flex;gap:16px;flex-wrap:wrap;font-size:13px;">
-      ${cats.map(([k,lbl])=>`<label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" ${ab[k]?'checked':''} style="accent-color:var(--amber);width:15px;height:15px;" onchange="updClienteAbordagem('${c.id}','${k}',this.checked)"> ${lbl}</label>`).join('')}
-    </div>
   </div>`;
   if(!c.codigo){
     h += `<div style="font-size:13px;color:var(--ink-soft);">Cliente sem código do Positivador — sem dados importados.</div>`;
