@@ -5206,6 +5206,7 @@ function parseMoeda(el){
 // ============================================================
 let sortKey = 'custodia', sortDir = -1;
 function sortClientes(k){
+  if(window.__colResizing) return; // ignora clique gerado ao arrastar coluna
   if(sortKey===k) sortDir*=-1; else {sortKey=k; sortDir = (k==='nome'||k==='tier')?1:-1;}
   renderClientes(); save();
 }
@@ -5466,10 +5467,11 @@ function initResizableCols(tableId){
     h.addEventListener('click', e=>{ e.stopPropagation(); });
     h.addEventListener('pointerdown', e=>{
       e.preventDefault(); e.stopPropagation();
+      window.__colResizing = true;
       const startX = e.pageX;
       const startW = cols[i] ? cols[i].getBoundingClientRect().width : th.getBoundingClientRect().width;
       const move = ev=>{ const w = Math.max(32, startW + (ev.pageX-startX)); if(cols[i]) cols[i].style.width = w+'px'; };
-      const up = ()=>{ document.removeEventListener('pointermove',move); document.removeEventListener('pointerup',up); document.body.style.cursor=''; };
+      const up = ()=>{ document.removeEventListener('pointermove',move); document.removeEventListener('pointerup',up); document.body.style.cursor=''; setTimeout(()=>{ window.__colResizing = false; }, 0); };
       document.addEventListener('pointermove',move); document.addEventListener('pointerup',up);
       document.body.style.cursor='col-resize';
     });
