@@ -5209,9 +5209,10 @@ function renderPainel(){
   // chips
   document.getElementById('chipResultado').textContent = pct(c.resultado);
   // KPIs
-  const custodia = S.clientes.reduce((a,x)=>a+(+x.custodia||0),0);
-  document.getElementById('kpiCustodia').textContent = fmt(custodia);
-  document.getElementById('kpiClientes').textContent = S.clientes.length + ' clientes na base';
+  const custodiaXP = S.clientes.reduce((a,x)=>a+(+x.custodia||0),0);
+  const mbCust = +M.mbCustodia||0;
+  document.getElementById('kpiCustodia').textContent = fmt(custodiaXP + mbCust);
+  document.getElementById('kpiClientes').textContent = mbCust ? (fmt(custodiaXP)+' XP + '+fmt(mbCust)+' MB') : (S.clientes.length + ' clientes na base');
   document.getElementById('kpiReceita').textContent = fmt(M.receita);
   document.getElementById('kpiReceitaMeta').textContent = 'meta ' + fmt(M.metaReceita) + ' · ' + pct(c.receitaPct);
   document.getElementById('kpiCaptacao').textContent = fmt(M.captacao);
