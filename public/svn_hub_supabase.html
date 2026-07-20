@@ -2562,6 +2562,14 @@ th.num{text-align:right;}
 <div class="app">
 <datalist id="clienteList"></datalist>
 
+<style>
+  nav.sidebar{position:fixed; top:0; left:0; height:100vh; z-index:120; overflow-y:auto; transform:translateX(-100%); transition:transform .18s ease; box-shadow:2px 0 18px rgba(0,0,0,.28);}
+  body.nav-open nav.sidebar{transform:translateX(0);}
+  #navPeek{position:fixed; left:0; top:0; width:10px; height:100vh; background:var(--charcoal); z-index:110; cursor:pointer; transition:opacity .18s;}
+  #navPeek::after{content:'☰'; position:absolute; top:16px; left:50%; transform:translateX(-50%); color:var(--amber-soft); font-size:11px;}
+  body.nav-open #navPeek, body.deck-present #navPeek{opacity:0; pointer-events:none;}
+</style>
+<div id="navPeek" title="Menu"></div>
 <nav class="sidebar">
   <div class="brand-row">
     <div class="brand-mark">S</div>
@@ -2569,7 +2577,6 @@ th.num{text-align:right;}
   </div>
   <div class="nav-label">Gestão</div>
   <button class="nav-item active" id="nav-painel" onclick="showView('painel')"><span class="ic">◈</span>Painel</button>
-  <button class="nav-item" id="nav-tarefas" onclick="showView('tarefas')"><span class="ic">✓</span>Tarefas do dia</button>
   <button class="nav-item" id="nav-clientes" onclick="showView('clientes')"><span class="ic">☰</span>Base de clientes</button>
   <button class="nav-item" id="nav-captacao" onclick="showView('captacao')"><span class="ic">↗</span>Captação &amp; Pipeline</button>
   <button class="nav-item" id="nav-planejamento" onclick="showView('planejamento')"><span class="ic">▦</span>Planejamento de Receita</button>
@@ -2595,6 +2602,17 @@ th.num{text-align:right;}
     <div>Dados salvos localmente neste navegador.</div>
   </div>
 </nav>
+<script>
+  (function(){
+    const openNav = ()=>document.body.classList.add('nav-open');
+    const closeNav = ()=>document.body.classList.remove('nav-open');
+    document.addEventListener('mousemove', e=>{ if(e.clientX<=8) openNav(); });
+    const pk = document.getElementById('navPeek');
+    const sb = document.querySelector('nav.sidebar');
+    if(pk) pk.addEventListener('mouseenter', openNav);
+    if(sb) sb.addEventListener('mouseleave', closeNav);
+  })();
+</script>
 
 <div class="main">
 
@@ -2665,7 +2683,7 @@ th.num{text-align:right;}
     <div class="card" style="margin-top:18px;">
       <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:12px;">
         <div><div class="eyebrow">Tarefas do dia</div><div class="desc" style="margin:0;">O que fazer hoje — abre o painel e você já sabe. Some ao virar o dia; adie pela data.</div></div>
-        <button class="btn ghost" onclick="showView('tarefas')">Abrir tarefas →</button>
+        <button class="btn ghost" onclick="openTarefasModal()">Abrir tarefas →</button>
       </div>
       <div class="inline-fields" style="margin-bottom:12px;">
         <div class="field" style="flex:2;"><label>Nova tarefa</label><input type="text" id="pTodoTexto" placeholder="O que precisa ser feito…" onkeydown="if(event.key==='Enter')addTodo('pTodoTexto','pTodoCliente')"></div>
@@ -2697,21 +2715,24 @@ th.num{text-align:right;}
 
   </div>
 
-  <!-- ================= TAREFAS (TO-DO) ================= -->
-  <div class="view" id="view-tarefas">
-    <style>
-      .todo-item{display:flex; align-items:center; gap:10px; padding:9px 4px; border-bottom:1px solid var(--cream-2);}
-      .todo-item.done .todo-txt{text-decoration:line-through; color:var(--ink-soft);}
-      .todo-txt{flex:1; min-width:120px; border:none; background:transparent; font-family:'Inter',sans-serif; font-size:14px; color:var(--ink); outline:none; padding:2px 0;}
-      .todo-nocli{font-size:11.5px; color:var(--ink-soft); font-style:italic;}
-      .todo-atras{font-size:11px; color:#c0392b; font-weight:600; white-space:nowrap;}
-      .todo-date{border:1px solid var(--line); border-radius:7px; padding:3px 6px; font-size:12px; background:#fff;}
-      .todo-date-lbl{font-weight:600; color:var(--amber); min-width:44px;}
-    </style>
-    <div class="card">
-      <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:12px;">
-        <div><h2>Tarefas do dia</h2><div class="desc" style="margin:0;">As tarefas de hoje resetam a cada dia. As não concluídas seguem aparecendo; use a data ou +1d para adiar.</div></div>
-        <div id="todoHojeLbl" style="font-size:13px; color:var(--ink-soft);"></div>
+  <!-- ================= TAREFAS (TO-DO) — modal ================= -->
+  <style>
+    .todo-item{display:flex; align-items:center; gap:10px; padding:9px 4px; border-bottom:1px solid var(--cream-2);}
+    .todo-item.done .todo-txt{text-decoration:line-through; color:var(--ink-soft);}
+    .todo-txt{flex:1; min-width:120px; border:none; background:transparent; font-family:'Inter',sans-serif; font-size:14px; color:var(--ink); outline:none; padding:2px 0;}
+    .todo-nocli{font-size:11.5px; color:var(--ink-soft); font-style:italic;}
+    .todo-atras{font-size:11px; color:#c0392b; font-weight:600; white-space:nowrap;}
+    .todo-date{border:1px solid var(--line); border-radius:7px; padding:3px 6px; font-size:12px; background:#fff;}
+    .todo-date-lbl{font-weight:600; color:var(--amber); min-width:44px;}
+    .modal-overlay{position:fixed; inset:0; background:rgba(34,30,29,.55); z-index:500; display:none; align-items:flex-start; justify-content:center; padding:56px 18px; overflow-y:auto;}
+    .modal-box{background:#fff; border-radius:16px; width:100%; max-width:760px; padding:24px 26px; box-shadow:0 24px 60px rgba(0,0,0,.3);}
+    .modal-head{display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:16px;}
+  </style>
+  <div id="tarefasModal" class="modal-overlay" onclick="if(event.target===this)closeTarefasModal()">
+    <div class="modal-box">
+      <div class="modal-head">
+        <div><h2 style="font-family:'Fraunces',serif; font-weight:500; font-size:22px;">Tarefas do dia</h2><div class="desc" style="margin:0;">Resetam a cada dia. As não concluídas seguem; use a data ou +1d para adiar. <span id="todoHojeLbl"></span></div></div>
+        <button class="btn ghost" onclick="closeTarefasModal()">Fechar ✕</button>
       </div>
       <div class="inline-fields" style="margin-bottom:14px;">
         <div class="field" style="flex:2;"><label>Nova tarefa</label><input type="text" id="todoTexto" placeholder="O que precisa ser feito…" onkeydown="if(event.key==='Enter')addTodo()"></div>
@@ -2719,10 +2740,7 @@ th.num{text-align:right;}
         <div class="field" style="flex:0;"><label>&nbsp;</label><button class="btn solid" onclick="addTodo()">+ Adicionar</button></div>
       </div>
       <div id="todosHoje"></div>
-    </div>
-    <div class="card">
-      <div class="eyebrow">Agendadas / adiadas</div>
-      <div class="desc">Tarefas marcadas para os próximos dias.</div>
+      <div class="eyebrow" style="margin-top:18px;">Agendadas / adiadas</div>
       <div id="todosFuturos" style="margin-top:8px;"></div>
     </div>
   </div>
@@ -5153,7 +5171,6 @@ function calc(){
 // ============================================================
 const TITLES = {
   painel:['Painel','Visão geral do mês — receita, captação e qualidade.'],
-  tarefas:['Tarefas do dia','Lista de afazeres do dia, por cliente ou avulsa, com adiamento.'],
   clientes:['Base de clientes','Custódia, receita, tierização e a próxima oportunidade de cada cliente.'],
   captacao:['Captação & Pipeline','Do lead ao fechamento: funil, negócios em andamento e captação líquida.'],
   planejamento:['Planejamento de Receita','Pipeline de receita por cliente e produto, com ROA e receita gerada.'],
@@ -5168,7 +5185,7 @@ const TITLES = {
   positivador:['Upload Positivador','Importa Positivador e Diversificador (.xlsx) e sincroniza com a Base de clientes.']
 };
 
-const GESTAO_VIEWS = ['painel','tarefas','clientes','captacao','planejamento','pj2'];
+const GESTAO_VIEWS = ['painel','clientes','captacao','planejamento','pj2'];
 
 function showView(v){
   document.querySelectorAll('.view').forEach(el=>el.classList.remove('active'));
@@ -5667,6 +5684,9 @@ function addTodo(txtId, cliId){
   inp.value=''; if(cliEl) cliEl.value='';
   renderTodos(); save();
 }
+function openTarefasModal(){ const m=document.getElementById('tarefasModal'); if(m){ m.style.display='flex'; renderTodos(); const t=document.getElementById('todoTexto'); if(t) setTimeout(()=>t.focus(),50); } }
+function closeTarefasModal(){ const m=document.getElementById('tarefasModal'); if(m) m.style.display='none'; }
+document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeTarefasModal(); });
 function toggleTodo(id){ const t=S.todos.find(x=>x.id===id); if(!t) return; t.feito=!t.feito; renderTodos(); save(); }
 function updTodo(id,k,v){ const t=S.todos.find(x=>x.id===id); if(!t) return; t[k]=v; save(); renderTodos(); }
 function delTodo(id){ S.todos=S.todos.filter(x=>x.id!==id); renderTodos(); save(); }
@@ -5991,7 +6011,7 @@ function renderPipeline(){
     const pond = (+d.valor||0)*(clamp(+d.prob||0,0,100)/100);
     const etOptions = ETAPAS.map(e=>`<option ${e===d.etapa?'selected':''}>${e}</option>`).join('');
     html += `<tr>
-      <td><input type="text" list="clienteList" value="${esc(d.nome)}" placeholder="Nome ou código do cliente" oninput="resolveClienteCodigo(this)" onchange="updDeal('${d.id}','nome',this.value)"></td>
+      <td><input type="text" value="${esc(d.nome)}" placeholder="Nome ou código do cliente" autocomplete="off" onfocus="cliPickOpen(this)" oninput="cliPickRender()" onchange="updDeal('${d.id}','nome',this.value)"></td>
       <td class="num"><input type="text" inputmode="numeric" value="${d.valor?fmt(d.valor):''}" placeholder="R$0" style="text-align:right" oninput="maskMoeda(this)" onchange="updDeal('${d.id}','valor',parseMoeda(this))"></td>
       <td><select onchange="updDeal('${d.id}','etapa',this.value)">${etOptions}</select></td>
       <td class="num"><input type="number" value="${d.prob||''}" min="0" max="100" style="text-align:right; width:64px;" onchange="updDeal('${d.id}','prob',this.value)"></td>
