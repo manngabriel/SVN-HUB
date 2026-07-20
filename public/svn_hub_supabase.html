@@ -5496,14 +5496,19 @@ function _cliPickEl(){
   }
   return pop;
 }
+function cliPickReposition(){
+  if(!_cliPickInput) return;
+  const pop = _cliPickEl();
+  const r = _cliPickInput.getBoundingClientRect();
+  pop.style.left = (window.scrollX + r.left) + 'px';
+  pop.style.top = (window.scrollY + r.bottom + 4) + 'px';
+  pop.style.minWidth = Math.max(240, r.width) + 'px';
+}
 function cliPickOpen(inp){
   _cliPickInput = inp;
   const pop = _cliPickEl();
   cliPickRender();
-  const r = inp.getBoundingClientRect();
-  pop.style.left = (window.scrollX + r.left) + 'px';
-  pop.style.top = (window.scrollY + r.bottom + 4) + 'px';
-  pop.style.minWidth = Math.max(240, r.width) + 'px';
+  cliPickReposition();
   pop.style.display = 'block';
 }
 function cliPickRender(){
@@ -5532,7 +5537,7 @@ function cliPickClose(){ const pop = document.getElementById('cliPickPop'); if(p
 document.addEventListener('mousedown', e=>{
   if(_cliPickInput && e.target!==_cliPickInput && !(e.target.closest && e.target.closest('#cliPickPop'))) cliPickClose();
 });
-document.addEventListener('scroll', ()=>{ if(_cliPickInput) cliPickClose(); }, true);
+document.addEventListener('scroll', ()=>{ if(_cliPickInput) cliPickReposition(); }, true);
 
 // ============================================================
 // PLANEJAMENTO DE RECEITA (pipeline de receita por cliente/produto)
