@@ -3572,6 +3572,7 @@ th.num{text-align:right;}
         <div class="brand"><span class="eyebrow">SVN Investimentos</span><h1>Simulador de Realocação de Carteira</h1></div>
         <div class="right">
           <div class="client-field"><label>Cliente</label>
+            <input type="text" id="scClienteBusca" placeholder="Buscar cliente…" oninput="scPopularClientes()" style="margin-bottom:6px; width:100%;">
             <select id="scClienteSelect" onchange="scSelecionarCliente(this.value)">
               <option value="">— sem cliente vinculado —</option>
             </select>
@@ -5030,8 +5031,9 @@ function renderPainel(){
   document.getElementById('kpiReceita').textContent = fmt(M.receita);
   document.getElementById('kpiReceitaMeta').textContent = 'meta ' + fmt(M.metaReceita) + ' · ' + pct(c.receitaPct);
   document.getElementById('kpiCaptacao').textContent = fmt(M.captacao);
+  const pipeTotal = S.pipeline.reduce((a,d)=>a+(+d.valor||0),0);
   const pond = S.pipeline.reduce((a,d)=>a+(+d.valor||0)*(clamp(+d.prob||0,0,100)/100),0);
-  document.getElementById('kpiPipeline').textContent = 'pipeline ponderado ' + fmt(pond);
+  document.getElementById('kpiPipeline').textContent = 'potencial ' + fmt(pipeTotal) + ' · ponderado ' + fmt(pond);
   document.getElementById('kpiFunil').textContent = M.leads>0 ? pct(c.funil) : '—';
   document.getElementById('kpiFunilDet').textContent = `${M.leads||0} leads · ${M.r1||0} R1 · ${M.r2||0} R2 · ${M.contas||0} contas`;
   // metas bars
@@ -5440,6 +5442,7 @@ function detalheClienteHTML(c, pos, ativos){
 // Pizza de composição por classe — espelha o donut do Simulador de Carteira (mesmas cores)
 function composicaoDonutHTML(porClasse, total){
   const size=130, stroke=18, r=(size-stroke)/2, c=2*Math.PI*r, cx=size/2, cy=size/2;
+  const compact = v => { v=+v||0; if(v>=1e6) return 'R$ '+(v/1e6).toLocaleString('pt-BR',{maximumFractionDigits:1})+' mi'; if(v>=1e3) return 'R$ '+(v/1e3).toLocaleString('pt-BR',{maximumFractionDigits:0})+' mil'; return 'R$ '+v.toLocaleString('pt-BR',{maximumFractionDigits:0}); };
   const entries = Object.entries(porClasse).filter(([,v])=>v>0.001).sort((a,b)=>b[1]-a[1]);
   let svg = `<div style="display:flex;gap:22px;align-items:center;flex-wrap:wrap;">`;
   svg += `<div style="position:relative;width:${size}px;height:${size}px;flex:none;"><svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" style="transform:rotate(-90deg)"><circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="#EAE1D4" stroke-width="${stroke}"/>`;
@@ -5450,7 +5453,7 @@ function composicaoDonutHTML(porClasse, total){
     svg += `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${color}" stroke-width="${stroke}" stroke-dasharray="${len} ${c-len}" stroke-dashoffset="${-offset}"/>`;
     offset+=len;
   });
-  svg += `</svg><div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;"><div style="font-size:12px;font-weight:700;color:var(--ink);">${scFmtBRL(total)}</div><div style="font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-soft);">carteira</div></div></div>`;
+  svg += `</svg><div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;"><div style="font-size:13px;font-weight:700;color:var(--ink);line-height:1.1;">${compact(total)}</div><div style="font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-soft);margin-top:2px;">carteira</div></div></div>`;
   svg += `<div style="flex:1;min-width:180px;">`;
   entries.forEach(([classe,val])=>{
     const pct = total>0?(val/total*100):0;
@@ -5458,6 +5461,14 @@ function composicaoDonutHTML(porClasse, total){
   });
   svg += `</div></div>`;
   return svg;
+}
+// Infere o indexador de um ativo pelo nome/produto (Diversificador não traz essa coluna)
+function classificarIndexador(ativo, produto, subProduto){
+  const a = ((ativo||'')+' '+(subProduto||'')+' '+(produto||'')).toUpperCase();
+  if(/\bIPCA\b|\bIGP|NTN-?B|TESOURO IPCA/.test(a)) return 'IPCA+';
+  if(/\bCDI\b|\bP[OÓ]S|\bLFT\b|SELIC|TESOURO SELIC/.test(a)) return '% do CDI';
+  if(/\bPR[EÉ]|PREFIX|\bLTN\b|NTN-?F|TESOURO PREFIXADO/.test(a)) return 'Prefixado';
+  return 'Não informado';
 }
 // Leva a carteira do Diversificador deste cliente para o Simulador de Carteira (mesmo scState)
 async function abrirNoSimulador(id){
@@ -5470,7 +5481,7 @@ async function abrirNoSimulador(id){
     id:scUid(),
     nome: r.ativo||r.sub_produto||r.produto||'Ativo',
     classe: scClasses.includes(r.classe)?r.classe:classificarAtivoDiversificacao(r.produto,r.sub_produto,r.ativo),
-    indexador:'Não informado', parametro:0, valor:+r.net||0
+    indexador: classificarIndexador(r.ativo, r.produto, r.sub_produto), parametro:0, valor:+r.net||0
   }));
   scState.movimentacoes = [];
   showView('sim-carteira');
@@ -7755,10 +7766,17 @@ document.getElementById('scFilePdfText').addEventListener('change', async functi
 function scPopularClientes(){
   const sel = document.getElementById('scClienteSelect'); if(!sel) return;
   const cur = sel.value;
+  const busca = (document.getElementById('scClienteBusca')?.value||'').trim().toLowerCase();
   let html = '<option value="">— sem cliente vinculado —</option>';
-  S.clientes.forEach(c=>{
-    html += `<option value="${c.id}">${esc(c.nome||'(sem nome)')}${c.simCarteira?' · tem simulação salva':''}</option>`;
-  });
+  S.clientes
+    .filter(c=>{
+      if(!clienteNomeado(c)) return false;
+      if(!busca) return true;
+      return (c.nome||'').toLowerCase().includes(busca) || (c.codigo && String(c.codigo).includes(busca));
+    })
+    .forEach(c=>{
+      html += `<option value="${c.id}">${esc(c.nome||'(sem nome)')}${c.simCarteira?' · tem simulação salva':''}</option>`;
+    });
   sel.innerHTML = html;
   sel.value = S.clientes.some(c=>c.id===cur) ? cur : '';
   scAtualizarClienteBar();
@@ -7807,8 +7825,8 @@ async function scCarregarDiversificador(){
     scState.carteira = rows.map(r => ({
       id: scUid(),
       nome: r.ativo || r.sub_produto || r.produto || 'Ativo',
-      classe: r.classe || classificarAtivoDiversificacao(r.produto, r.sub_produto),
-      indexador: 'Não informado',
+      classe: r.classe || classificarAtivoDiversificacao(r.produto, r.sub_produto, r.ativo),
+      indexador: classificarIndexador(r.ativo, r.produto, r.sub_produto),
       parametro: 0,
       valor: +r.net || 0
     }));
