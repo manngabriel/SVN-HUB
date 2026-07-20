@@ -2660,6 +2660,18 @@ th.num{text-align:right;}
       </div>
     </div>
 
+    <div class="card" style="margin-top:18px;">
+      <div class="eyebrow">Modelo de remuneração</div>
+      <div class="desc">Quantos clientes em cada modelo e quanto o fee fixo remunera o escritório (custódia × taxa a.a combinada).</div>
+      <div class="grid c4">
+        <div class="kpi"><div class="l">Clientes Fee Fixo</div><div class="v" id="kpiFeeCount">0</div><div class="s" id="kpiFeeCustodia">R$0 em custódia</div></div>
+        <div class="kpi"><div class="l">Clientes Comission based</div><div class="v" id="kpiComCount">0</div><div class="s" id="kpiComCustodia">R$0 em custódia</div></div>
+        <div class="kpi"><div class="l">Receita fee-based · mês</div><div class="v" id="kpiFeeReceitaMes">R$0</div><div class="s" id="kpiFeeReceitaAno">R$0 a.a</div></div>
+        <div class="kpi dark"><div class="l">Taxa média fee fixo</div><div class="v" id="kpiFeeTaxaMedia">0%</div><div class="s">a.a ponderada por custódia</div></div>
+      </div>
+      <div class="footer-note">Defina a taxa a.a de cada cliente Fee Fixo na Base de clientes (coluna Modelo).</div>
+    </div>
+
   </div>
 
   <!-- ================= CLIENTES ================= -->
@@ -2684,6 +2696,7 @@ th.num{text-align:right;}
           <th class="num" onclick="sortClientes('custodia')">Custódia</th>
           <th class="num" onclick="sortClientes('receita')">Receita mês</th>
           <th onclick="sortClientes('tier')">Tier</th>
+          <th class="num noclick">Poss. captação</th>
           <th class="noclick">Modelo</th>
           <th class="noclick"></th>
         </tr></thead>
@@ -2694,7 +2707,9 @@ th.num{text-align:right;}
           <td></td>
           <td class="num" id="totCustodia" style="font-weight:600;"></td>
           <td class="num" id="totReceita" style="font-weight:600;"></td>
-          <td colspan="3" id="totReunioes" style="color:var(--ink-soft); font-size:12px;"></td>
+          <td></td>
+          <td class="num" id="totPossCap" style="font-weight:600;"></td>
+          <td colspan="2" id="totReunioes" style="color:var(--ink-soft); font-size:12px;"></td>
         </tr></tfoot>
       </table>
       </div>
@@ -5033,6 +5048,27 @@ function renderPainel(){
   // entrada rápida
   fillMoeda('inReceita', M.receita); fillMoeda('inMetaReceita', M.metaReceita); fillMoeda('inCaptacao', M.captacao);
   fillMoeda('inMetaCaptacao', M.metaCaptacao); fill('inPenetracaoQtd', M.penetracaoQtd);
+  // modelo de remuneração (fee fixo × comission based)
+  renderPainelModelo();
+}
+
+function renderPainelModelo(){
+  if(!document.getElementById('kpiFeeCount')) return;
+  const base = S.clientes.filter(clienteNomeado);
+  const fee = base.filter(c=>c.modelo==='Fee Fixo');
+  const com = base.filter(c=>(c.modelo||'Comission based')!=='Fee Fixo');
+  const feeCust = fee.reduce((a,c)=>a+(+c.custodia||0),0);
+  const comCust = com.reduce((a,c)=>a+(+c.custodia||0),0);
+  const feeAno = fee.reduce((a,c)=>a+(+c.custodia||0)*((+c.feeTaxa||0)/100),0);
+  const feeMes = feeAno/12;
+  const taxaMedia = feeCust>0 ? (feeAno/feeCust*100) : 0;
+  document.getElementById('kpiFeeCount').textContent = fee.length;
+  document.getElementById('kpiFeeCustodia').textContent = fmt(feeCust)+' em custódia';
+  document.getElementById('kpiComCount').textContent = com.length;
+  document.getElementById('kpiComCustodia').textContent = fmt(comCust)+' em custódia';
+  document.getElementById('kpiFeeReceitaMes').textContent = fmt(feeMes);
+  document.getElementById('kpiFeeReceitaAno').textContent = fmt(feeAno)+' a.a';
+  document.getElementById('kpiFeeTaxaMedia').textContent = taxaMedia.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})+'%';
 }
 
 function setBar(barId, valId, p, label){
@@ -5260,26 +5296,39 @@ function renderClientes(){
         <option value="2" ${c.tier==='2'?'selected':''}>Tier 2</option>
         <option value="3" ${c.tier==='3'?'selected':''}>Tier 3</option>
       </select></td>
-      <td><select onchange="updCliente('${c.id}','modelo',this.value)">
+      <td class="num" style="color:var(--ink-soft); white-space:nowrap;">${(()=>{const p=possibilidadeCaptacaoCliente(c); return p?fmt(p):'R$0';})()}</td>
+      <td><select onchange="updCliente('${c.id}','modelo',this.value); renderClientes();">
         <option ${modelo==='Comission based'?'selected':''}>Comission based</option>
         <option ${modelo==='Fee Fixo'?'selected':''}>Fee Fixo</option>
-      </select></td>
+      </select>${modelo==='Fee Fixo'?`<input type="number" value="${c.feeTaxa!=null&&c.feeTaxa!==''?c.feeTaxa:''}" min="0" step="0.05" placeholder="% a.a" title="Taxa anual combinada (%)" style="width:74px; margin-top:4px; text-align:right;" onchange="updCliente('${c.id}','feeTaxa',parseFloat(this.value)||0)">`:''}</td>
       <td><button class="btn danger" title="Remover" onclick="delCliente('${c.id}')">×</button></td>
     </tr>
-    <tr class="cli-detalhe" id="det-${c.id}" style="${aberto?'':'display:none;'}"><td colspan="8" style="background:var(--cream-2); padding:0;"><div id="detbox-${c.id}" style="padding:16px 18px;"></div></td></tr>`;
+    <tr class="cli-detalhe" id="det-${c.id}" style="${aberto?'':'display:none;'}"><td colspan="9" style="background:var(--cream-2); padding:0;"><div id="detbox-${c.id}" style="padding:16px 18px;"></div></td></tr>`;
   });
-  document.getElementById('clientesBody').innerHTML = html || '<tr><td colspan="8" class="empty">Adicione o primeiro cliente da base.</td></tr>';
+  document.getElementById('clientesBody').innerHTML = html || '<tr><td colspan="9" class="empty">Adicione o primeiro cliente da base.</td></tr>';
   // Recarrega painéis de detalhe que estavam abertos
   _detAbertos.forEach(id=>{ if(document.getElementById('detbox-'+id)) carregarDetalheCliente(id); });
   renderTotais();
 }
 function clienteNomeado(c){ const n=(c.nome||'').trim(); return n && !/^Cliente \d+$/.test(n); }
+// Soma das possibilidades de captação (pipeline) atreladas a este cliente por nome ou código
+function possibilidadeCaptacaoCliente(c){
+  if(!S.pipeline) return 0;
+  const nome = (c.nome||'').trim().toLowerCase();
+  const cod = c.codigo ? String(c.codigo).toLowerCase() : '';
+  return S.pipeline.filter(d=>{
+    const n = (d.nome||'').trim().toLowerCase();
+    return n && ((nome && n===nome) || (cod && n===cod));
+  }).reduce((a,d)=>a+(+d.valor||0),0);
+}
 function renderTotais(){
   const vis = S.clientes.filter(clienteNomeado);
   const custodia = vis.reduce((a,x)=>a+(+x.custodia||0),0);
   const receita = vis.reduce((a,x)=>a+(+x.receita||0),0);
+  const possCap = vis.reduce((a,x)=>a+possibilidadeCaptacaoCliente(x),0);
   document.getElementById('totCustodia').textContent = fmt(custodia);
   document.getElementById('totReceita').textContent = fmt(receita);
+  const tp = document.getElementById('totPossCap'); if(tp) tp.textContent = fmt(possCap);
   document.getElementById('totReunioes').textContent = vis.length + ' clientes na base';
 }
 
@@ -5361,10 +5410,17 @@ function detalheClienteHTML(c, pos, ativos){
     h += `<div style="font-size:13px;color:var(--ink-soft);margin-bottom:14px;">Sem registro no Positivador (banco) para o código ${esc(c.codigo)}.</div>`;
   }
   // Diversificador
-  h += `<div style="font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--amber);font-weight:700;margin:6px 0 8px;">Diversificador — ativos</div>`;
+  h += `<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:6px 0 8px;">
+    <div style="font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--amber);font-weight:700;">Diversificador — composição da carteira</div>
+    ${(ativos&&ativos.length)?`<button class="btn sm solid" onclick="abrirNoSimulador('${c.id}')">Abrir no Simulador de Carteira</button>`:''}
+  </div>`;
   if(ativos && ativos.length){
     const tot = ativos.reduce((a,r)=>a+(+r.net||0),0);
-    h += '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:12px;">';
+    // Pizza percentual por classe (mesmas cores do Simulador de Carteira)
+    const porClasse = {};
+    ativos.forEach(r=>{ const cl=r.classe||'Outros'; porClasse[cl]=(porClasse[cl]||0)+(+r.net||0); });
+    h += composicaoDonutHTML(porClasse, tot);
+    h += '<div style="overflow-x:auto;margin-top:12px;"><table style="width:100%;border-collapse:collapse;font-size:12px;">';
     h += '<tr style="border-bottom:1px solid var(--line);"><th style="text-align:left;padding:5px 8px;">Ativo</th><th style="text-align:left;padding:5px 8px;">Classe</th><th style="text-align:left;padding:5px 8px;">Vencimento</th><th style="text-align:right;padding:5px 8px;">NET</th></tr>';
     ativos.forEach(r=>{
       h += `<tr style="border-bottom:1px solid var(--cream-2);">
@@ -5381,13 +5437,54 @@ function detalheClienteHTML(c, pos, ativos){
   }
   return h;
 }
+// Pizza de composição por classe — espelha o donut do Simulador de Carteira (mesmas cores)
+function composicaoDonutHTML(porClasse, total){
+  const size=130, stroke=18, r=(size-stroke)/2, c=2*Math.PI*r, cx=size/2, cy=size/2;
+  const entries = Object.entries(porClasse).filter(([,v])=>v>0.001).sort((a,b)=>b[1]-a[1]);
+  let svg = `<div style="display:flex;gap:22px;align-items:center;flex-wrap:wrap;">`;
+  svg += `<div style="position:relative;width:${size}px;height:${size}px;flex:none;"><svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" style="transform:rotate(-90deg)"><circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="#EAE1D4" stroke-width="${stroke}"/>`;
+  let offset=0;
+  entries.forEach(([classe,val])=>{
+    const len=(total>0?val/total:0)*c;
+    const color=scClassColors[classe]||'#a39a8f';
+    svg += `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${color}" stroke-width="${stroke}" stroke-dasharray="${len} ${c-len}" stroke-dashoffset="${-offset}"/>`;
+    offset+=len;
+  });
+  svg += `</svg><div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;"><div style="font-size:12px;font-weight:700;color:var(--ink);">${scFmtBRL(total)}</div><div style="font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-soft);">carteira</div></div></div>`;
+  svg += `<div style="flex:1;min-width:180px;">`;
+  entries.forEach(([classe,val])=>{
+    const pct = total>0?(val/total*100):0;
+    svg += `<div style="display:flex;align-items:center;gap:8px;font-size:12px;padding:2px 0;"><span style="width:11px;height:11px;border-radius:3px;flex:none;background:${scClassColors[classe]||'#a39a8f'}"></span><span style="flex:1;">${classe}</span><span style="font-weight:600;">${scFmtPct(pct)}</span></div>`;
+  });
+  svg += `</div></div>`;
+  return svg;
+}
+// Leva a carteira do Diversificador deste cliente para o Simulador de Carteira (mesmo scState)
+async function abrirNoSimulador(id){
+  const c = S.clientes.find(x=>x.id===id); if(!c) return;
+  if(!c.codigo){ alert('Cliente sem código do Positivador — sem carteira do Diversificador para o simulador.'); return; }
+  let ativos=[];
+  try{ ativos = await sbGet('ativos_clientes','?cliente=eq.'+encodeURIComponent(c.codigo)+'&order=net.desc')||[]; }catch(e){}
+  if(!ativos.length){ alert('Nenhum ativo do Diversificador para '+(c.nome||'este cliente')+'.'); return; }
+  scState.carteira = ativos.map(r=>({
+    id:scUid(),
+    nome: r.ativo||r.sub_produto||r.produto||'Ativo',
+    classe: scClasses.includes(r.classe)?r.classe:classificarAtivoDiversificacao(r.produto,r.sub_produto,r.ativo),
+    indexador:'Não informado', parametro:0, valor:+r.net||0
+  }));
+  scState.movimentacoes = [];
+  showView('sim-carteira');
+  const sel = document.getElementById('scClienteSelect');
+  if(sel){ sel.value = id; scAtualizarClienteBar(); }
+  scRenderAll(true);
+}
 
 // ============================================================
 // PIPELINE
 // ============================================================
 function addDeal(){
   S.pipeline.push({id:m8(), nome:'', valor:0, etapa:'Lead', prob:20, proximo:''});
-  renderPipeline(); save();
+  renderPipeline(); renderClientes(); save();
 }
 function delDeal(id){
   S.pipeline = S.pipeline.filter(d=>d.id!==id);
@@ -5396,7 +5493,7 @@ function delDeal(id){
 function updDeal(id,k,v){
   const d = S.pipeline.find(x=>x.id===id); if(!d) return;
   d[k] = (k==='valor'||k==='prob') ? (+v||0) : v;
-  save(); renderPipeline(); renderPainel();
+  save(); renderPipeline(); renderPainel(); renderClientes();
 }
 function renderPipeline(){
   const c = calc(); const M = c.M;
