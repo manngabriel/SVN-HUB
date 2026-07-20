@@ -2673,6 +2673,21 @@ th.num{text-align:right;}
       <div class="footer-note">Defina a taxa a.a de cada cliente Fee Fixo na Base de clientes (coluna Modelo).</div>
     </div>
 
+    <div class="card" style="margin-top:18px;">
+      <div class="eyebrow">Oportunidades</div>
+      <div class="desc">Receita prevista no Planejamento (ainda não realizada) e captação em andamento no Pipeline.</div>
+      <div class="grid c2">
+        <div>
+          <div class="kpi" style="margin-bottom:12px;"><div class="l">Oportunidade de receita</div><div class="v" id="opoReceitaTot">R$0</div><div class="s" id="opoReceitaSub">0 linhas previstas</div></div>
+          <div id="opoReceitaLista"></div>
+        </div>
+        <div>
+          <div class="kpi" style="margin-bottom:12px;"><div class="l">Oportunidade de captação</div><div class="v" id="opoCaptTot">R$0</div><div class="s" id="opoCaptSub">pipeline potencial · ponderado</div></div>
+          <div id="opoCaptLista"></div>
+        </div>
+      </div>
+    </div>
+
   </div>
 
   <!-- ================= CLIENTES ================= -->
@@ -2707,7 +2722,7 @@ th.num{text-align:right;}
       <div>
       <table id="tblClientes">
         <colgroup>
-          <col style="width:34px"><col style="width:180px"><col style="width:86px"><col style="width:120px"><col style="width:120px"><col style="width:96px"><col style="width:120px"><col style="width:210px"><col style="width:46px">
+          <col style="width:34px"><col style="width:180px"><col style="width:86px"><col style="width:120px"><col style="width:120px"><col style="width:130px"><col style="width:96px"><col style="width:120px"><col style="width:210px"><col style="width:46px">
         </colgroup>
         <thead><tr>
           <th class="noclick" style="width:34px;"></th>
@@ -2715,6 +2730,7 @@ th.num{text-align:right;}
           <th onclick="sortClientes('codigo')">Código</th>
           <th class="num" onclick="sortClientes('custodia')">Custódia</th>
           <th class="num" onclick="sortClientes('receita')">Receita mês</th>
+          <th class="num noclick">Potencial receita</th>
           <th onclick="sortClientes('tier')">Tier</th>
           <th class="num noclick">Poss. captação</th>
           <th class="noclick">Modelo</th>
@@ -2727,6 +2743,7 @@ th.num{text-align:right;}
           <td></td>
           <td class="num" id="totCustodia" style="font-weight:600;"></td>
           <td class="num" id="totReceita" style="font-weight:600;"></td>
+          <td class="num" id="totPotReceita" style="font-weight:600;"></td>
           <td></td>
           <td class="num" id="totPossCap" style="font-weight:600;"></td>
           <td colspan="2" id="totReunioes" style="color:var(--ink-soft); font-size:12px;"></td>
@@ -2835,12 +2852,12 @@ th.num{text-align:right;}
   <!-- ================= PJ2 ================= -->
   <div class="view" id="view-pj2">
     <style>
-      #tblPj2Matrix{border-collapse:collapse; width:max-content; min-width:100%; font-size:12.5px;}
-      #tblPj2Matrix th, #tblPj2Matrix td{border:1px solid rgba(0,0,0,.10); padding:3px 4px; white-space:nowrap;}
-      #tblPj2Matrix thead th{background:var(--cream-2); position:sticky; top:0; z-index:1; font-size:10px; text-transform:uppercase; letter-spacing:.02em; color:var(--ink-soft);}
-      #tblPj2Matrix td:first-child, #tblPj2Matrix th:first-child{position:sticky; left:0; background:#fff; z-index:2; font-weight:600; max-width:150px; overflow:hidden; text-overflow:ellipsis;}
+      #tblPj2Matrix{border-collapse:collapse; width:max-content; min-width:100%; font-size:13px;}
+      #tblPj2Matrix th, #tblPj2Matrix td{border:1px solid rgba(0,0,0,.10); padding:5px 6px; white-space:nowrap;}
+      #tblPj2Matrix thead th{background:var(--cream-2); position:sticky; top:0; z-index:1; font-size:10.5px; text-transform:uppercase; letter-spacing:.1em; color:var(--ink-soft);}
+      #tblPj2Matrix td:first-child, #tblPj2Matrix th:first-child{position:sticky; left:0; background:#fff; z-index:2; font-weight:600; max-width:170px; overflow:hidden; text-overflow:ellipsis;}
       #tblPj2Matrix thead th:first-child{z-index:3; background:var(--cream-2);}
-      #tblPj2Matrix select{width:100%; min-width:84px; border:1px solid var(--line); border-radius:6px; padding:2px 3px; font-size:11px; background:#fff;}
+      #tblPj2Matrix select{width:100%; min-width:96px; border:1px solid var(--line); border-radius:7px; padding:3px 6px; font-size:12px; background:#fff; color:var(--ink);}
       #tblPj2Matrix select.set{border-color:var(--amber); color:var(--amber); font-weight:600;}
       #pj2MatrixWrap{overflow:visible; border:1px solid var(--line); border-radius:10px;}
     </style>
@@ -5182,6 +5199,30 @@ function renderPainel(){
   fillMoeda('inMetaCaptacao', M.metaCaptacao); fill('inPenetracaoQtd', M.penetracaoQtd);
   // modelo de remuneração (fee fixo × comission based)
   renderPainelModelo();
+  renderPainelOportunidades();
+}
+
+function renderPainelOportunidades(){
+  if(!document.getElementById('opoReceitaTot')) return;
+  const money = v => fmt(v||0);
+  // Receita prevista (linhas do Planejamento ainda não realizadas)
+  const pend = (S.planReceita||[]).filter(r=>!PLAN_STATUS_REALIZADO.includes(r.status));
+  const recTot = pend.reduce((a,r)=>a+planReceitaLinha(r),0);
+  document.getElementById('opoReceitaTot').textContent = money(recTot);
+  document.getElementById('opoReceitaSub').textContent = pend.length + ' linha(s) prevista(s)';
+  const topRec = [...pend].sort((a,b)=>planReceitaLinha(b)-planReceitaLinha(a)).slice(0,6);
+  document.getElementById('opoReceitaLista').innerHTML = topRec.length
+    ? topRec.map(r=>`<div class="op-item"><span class="who">${esc(r.cliente||'—')}</span><span class="what">${esc(r.produto||'')}${r.status?' · '+esc(r.status):''}</span><span class="tag">${money(planReceitaLinha(r))}</span></div>`).join('')
+    : '<div class="empty">Sem receita prevista no Planejamento.</div>';
+  // Captação (pipeline)
+  const captTot = (S.pipeline||[]).reduce((a,d)=>a+(+d.valor||0),0);
+  const pond = (S.pipeline||[]).reduce((a,d)=>a+(+d.valor||0)*(clamp(+d.prob||0,0,100)/100),0);
+  document.getElementById('opoCaptTot').textContent = money(captTot);
+  document.getElementById('opoCaptSub').textContent = 'ponderado ' + money(pond);
+  const topCap = [...(S.pipeline||[])].sort((a,b)=>(+b.valor||0)-(+a.valor||0)).slice(0,6);
+  document.getElementById('opoCaptLista').innerHTML = topCap.length
+    ? topCap.map(d=>`<div class="op-item"><span class="who">${esc(d.nome||'—')}</span><span class="what">${esc(d.etapa||'')}${d.prob?' · '+d.prob+'%':''}</span><span class="tag">${money(d.valor)}</span></div>`).join('')
+    : '<div class="empty">Nenhum negócio no pipeline.</div>';
 }
 
 function renderPainelModelo(){
@@ -5430,6 +5471,7 @@ function renderClientes(){
       <td style="color:var(--ink-soft); font-size:12.5px; white-space:nowrap;">${c.codigo||'—'}</td>
       <td class="num"><input type="text" inputmode="numeric" value="${c.custodia?fmt(c.custodia):''}" placeholder="R$0" style="text-align:right" oninput="maskMoeda(this)" onchange="updCliente('${c.id}','custodia',parseMoeda(this))"></td>
       <td class="num"><input type="text" inputmode="numeric" value="${c.receita?fmt(c.receita):''}" placeholder="R$0" style="text-align:right" oninput="maskMoeda(this)" onchange="updCliente('${c.id}','receita',parseMoeda(this))"></td>
+      <td class="num" style="color:var(--amber); white-space:nowrap;">${(()=>{const p=potencialReceitaCliente(c); return p?fmt(p):'R$0';})()}</td>
       <td><select onchange="updCliente('${c.id}','tier',this.value); renderClientes();">
         <option value="1" ${c.tier==='1'?'selected':''}>Tier 1</option>
         <option value="2" ${c.tier==='2'?'selected':''}>Tier 2</option>
@@ -5442,9 +5484,9 @@ function renderClientes(){
       </select>${modelo==='Fee Fixo'?`<span style="display:inline-flex; align-items:center; gap:2px; white-space:nowrap;"><input type="number" value="${c.feeTaxa!=null&&c.feeTaxa!==''?c.feeTaxa:''}" min="0" step="0.05" placeholder="a.a" title="Taxa anual combinada (%)" style="width:56px; text-align:right;" onchange="updCliente('${c.id}','feeTaxa',parseFloat(this.value)||0)"><b style="color:var(--ink-soft);">%</b></span>`:''}</div></td>
       <td><button class="btn danger" title="Remover" onclick="delCliente('${c.id}')">×</button></td>
     </tr>
-    <tr class="cli-detalhe" id="det-${c.id}" style="${aberto?'':'display:none;'}"><td colspan="9" style="background:var(--cream-2); padding:0;"><div id="detbox-${c.id}" style="padding:16px 18px;"></div></td></tr>`;
+    <tr class="cli-detalhe" id="det-${c.id}" style="${aberto?'':'display:none;'}"><td colspan="10" style="background:var(--cream-2); padding:0;"><div id="detbox-${c.id}" style="padding:16px 18px;"></div></td></tr>`;
   });
-  document.getElementById('clientesBody').innerHTML = html || '<tr><td colspan="9" class="empty">Adicione o primeiro cliente da base.</td></tr>';
+  document.getElementById('clientesBody').innerHTML = html || '<tr><td colspan="10" class="empty">Adicione o primeiro cliente da base.</td></tr>';
   // Recarrega painéis de detalhe que estavam abertos
   _detAbertos.forEach(id=>{ if(document.getElementById('detbox-'+id)) carregarDetalheCliente(id); });
   renderTotais();
@@ -5461,13 +5503,25 @@ function possibilidadeCaptacaoCliente(c){
     return n && ((nome && n===nome) || (cod && n===cod));
   }).reduce((a,d)=>a+(+d.valor||0),0);
 }
+// Potencial de receita do cliente = linhas do Planejamento de Receita ainda previstas (não realizadas)
+function potencialReceitaCliente(c){
+  if(!S.planReceita) return 0;
+  const nome = (c.nome||'').trim().toLowerCase();
+  const cod = c.codigo ? String(c.codigo).toLowerCase() : '';
+  return S.planReceita.filter(r=>{
+    const rc = (r.cliente||'').trim().toLowerCase();
+    return rc && ((nome && rc===nome) || (cod && rc===cod)) && !PLAN_STATUS_REALIZADO.includes(r.status);
+  }).reduce((a,r)=>a+planReceitaLinha(r),0);
+}
 function renderTotais(){
   const vis = S.clientes.filter(clienteNomeado);
   const custodia = vis.reduce((a,x)=>a+(+x.custodia||0),0);
   const receita = vis.reduce((a,x)=>a+(+x.receita||0),0);
+  const potReceita = vis.reduce((a,x)=>a+potencialReceitaCliente(x),0);
   const possCap = vis.reduce((a,x)=>a+possibilidadeCaptacaoCliente(x),0);
   document.getElementById('totCustodia').textContent = fmt(custodia);
   document.getElementById('totReceita').textContent = fmt(receita);
+  const tpr = document.getElementById('totPotReceita'); if(tpr) tpr.textContent = fmt(potReceita);
   const tp = document.getElementById('totPossCap'); if(tp) tp.textContent = fmt(possCap);
   document.getElementById('totReunioes').textContent = vis.length + ' clientes na base';
 }
