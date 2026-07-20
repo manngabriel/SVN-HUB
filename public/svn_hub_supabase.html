@@ -2707,7 +2707,7 @@ th.num{text-align:right;}
       <div>
       <table id="tblClientes">
         <colgroup>
-          <col style="width:34px"><col style="width:180px"><col style="width:86px"><col style="width:120px"><col style="width:120px"><col style="width:96px"><col style="width:120px"><col style="width:210px"><col style="width:72px"><col style="width:86px"><col style="width:56px"><col style="width:74px"><col style="width:84px"><col style="width:46px">
+          <col style="width:34px"><col style="width:180px"><col style="width:86px"><col style="width:120px"><col style="width:120px"><col style="width:96px"><col style="width:120px"><col style="width:210px"><col style="width:46px">
         </colgroup>
         <thead><tr>
           <th class="noclick" style="width:34px;"></th>
@@ -2718,11 +2718,6 @@ th.num{text-align:right;}
           <th onclick="sortClientes('tier')">Tier</th>
           <th class="num noclick">Poss. captação</th>
           <th class="noclick">Modelo</th>
-          <th class="noclick" style="text-align:center;">Seguro</th>
-          <th class="noclick" style="text-align:center;">Consórcio</th>
-          <th class="noclick" style="text-align:center;">MB</th>
-          <th class="noclick" style="text-align:center;">Intern.</th>
-          <th class="noclick" style="text-align:center;">Fin. Plan.</th>
           <th class="noclick"></th>
         </tr></thead>
         <tbody id="clientesBody"></tbody>
@@ -2734,7 +2729,7 @@ th.num{text-align:right;}
           <td class="num" id="totReceita" style="font-weight:600;"></td>
           <td></td>
           <td class="num" id="totPossCap" style="font-weight:600;"></td>
-          <td colspan="7" id="totReunioes" style="color:var(--ink-soft); font-size:12px;"></td>
+          <td colspan="2" id="totReunioes" style="color:var(--ink-soft); font-size:12px;"></td>
         </tr></tfoot>
       </table>
       </div>
@@ -2839,6 +2834,28 @@ th.num{text-align:right;}
 
   <!-- ================= PJ2 ================= -->
   <div class="view" id="view-pj2">
+    <style>
+      #tblPj2Matrix{border-collapse:collapse; width:max-content; min-width:100%; font-size:12.5px;}
+      #tblPj2Matrix th, #tblPj2Matrix td{border:1px solid rgba(0,0,0,.10); padding:5px 7px; white-space:nowrap;}
+      #tblPj2Matrix thead th{background:var(--cream-2); position:sticky; top:0; z-index:1; font-size:11px; text-transform:uppercase; letter-spacing:.03em; color:var(--ink-soft);}
+      #tblPj2Matrix td:first-child, #tblPj2Matrix th:first-child{position:sticky; left:0; background:#fff; z-index:2; font-weight:600;}
+      #tblPj2Matrix thead th:first-child{z-index:3; background:var(--cream-2);}
+      #tblPj2Matrix select{width:100%; min-width:120px; border:1px solid var(--line); border-radius:6px; padding:3px 4px; font-size:12px; background:#fff;}
+      #tblPj2Matrix select.set{border-color:var(--amber); color:var(--amber); font-weight:600;}
+      #pj2MatrixWrap{overflow:auto; max-height:70vh; border:1px solid var(--line); border-radius:10px;}
+    </style>
+    <div class="card">
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:12px;">
+        <div><div class="eyebrow">Status por produto · por cliente</div><div class="desc" style="margin:0;">Marque o estágio de cada produto para cada cliente da base.</div></div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+          <input class="search" id="pj2Busca" placeholder="Buscar cliente…" oninput="renderPj2Matrix()">
+          <button class="btn ghost" onclick="exportPj2XLSX()">⬇ Exportar XLSX</button>
+        </div>
+      </div>
+      <div id="pj2MatrixWrap">
+        <table id="tblPj2Matrix"><thead id="pj2MatrixHead"></thead><tbody id="pj2MatrixBody"></tbody></table>
+      </div>
+    </div>
     <div class="card">
       <div class="eyebrow">Cadência por produto · conforme Plano 10K</div>
       <div class="desc">Metas puxadas do galho "PJ2 — Outros negócios" da sua teia do Plano 10K. Edite os objetivos lá; registre as reuniões feitas aqui.</div>
@@ -5407,8 +5424,6 @@ function renderClientes(){
   arr.forEach(c=>{
     const modelo = c.modelo || 'Comission based';
     const aberto = _detAbertos.has(c.id);
-    const ab = c.abordagens || {};
-    const chk = (k)=>`<td style="text-align:center;"><input type="checkbox" ${ab[k]?'checked':''} style="accent-color:var(--amber); width:15px; height:15px;" onchange="updClienteAbordagem('${c.id}','${k}',this.checked)"></td>`;
     html += `<tr class="cli-main">
       <td style="text-align:center;"><button class="cli-toggle" id="tg-${c.id}" onclick="toggleClienteDetalhe('${c.id}')" title="Detalhes" style="border:none;background:transparent;cursor:pointer;font-size:14px;color:var(--amber);padding:2px 6px;">${aberto?'▾':'▸'}</button></td>
       <td><input type="text" value="${esc(c.nome)}" placeholder="Nome" onchange="updCliente('${c.id}','nome',this.value)"></td>
@@ -5425,12 +5440,11 @@ function renderClientes(){
         <option ${modelo==='Comission based'?'selected':''}>Comission based</option>
         <option ${modelo==='Fee Fixo'?'selected':''}>Fee Fixo</option>
       </select>${modelo==='Fee Fixo'?`<span style="display:inline-flex; align-items:center; gap:2px; white-space:nowrap;"><input type="number" value="${c.feeTaxa!=null&&c.feeTaxa!==''?c.feeTaxa:''}" min="0" step="0.05" placeholder="a.a" title="Taxa anual combinada (%)" style="width:56px; text-align:right;" onchange="updCliente('${c.id}','feeTaxa',parseFloat(this.value)||0)"><b style="color:var(--ink-soft);">%</b></span>`:''}</div></td>
-      ${chk('seguro')}${chk('consorcio')}${chk('mb')}${chk('internacional')}${chk('planning')}
       <td><button class="btn danger" title="Remover" onclick="delCliente('${c.id}')">×</button></td>
     </tr>
-    <tr class="cli-detalhe" id="det-${c.id}" style="${aberto?'':'display:none;'}"><td colspan="14" style="background:var(--cream-2); padding:0;"><div id="detbox-${c.id}" style="padding:16px 18px;"></div></td></tr>`;
+    <tr class="cli-detalhe" id="det-${c.id}" style="${aberto?'':'display:none;'}"><td colspan="9" style="background:var(--cream-2); padding:0;"><div id="detbox-${c.id}" style="padding:16px 18px;"></div></td></tr>`;
   });
-  document.getElementById('clientesBody').innerHTML = html || '<tr><td colspan="14" class="empty">Adicione o primeiro cliente da base.</td></tr>';
+  document.getElementById('clientesBody').innerHTML = html || '<tr><td colspan="9" class="empty">Adicione o primeiro cliente da base.</td></tr>';
   // Recarrega painéis de detalhe que estavam abertos
   _detAbertos.forEach(id=>{ if(document.getElementById('detbox-'+id)) carregarDetalheCliente(id); });
   renderTotais();
@@ -5904,6 +5918,74 @@ function renderPj2(){
     html += `<div class="op-item"><span class="who">${esc(x.nome)}</span><span class="what">${fmt(x.custodia)} · ${esc(x.notas||'')}</span><span class="tag">${esc(x.oportunidade)}</span></div>`;
   });
   document.getElementById('pj2Ops').innerHTML = html || '<div class="empty">Nenhum cliente marcado com oportunidade de seguro, consórcio, previdência ou planejamento.</div>';
+  renderPj2Matrix();
+}
+
+// ---- Matriz de status por produto (PJ2) ----
+const PJ2_PRODUTOS = [
+  {key:'financialPlanning', label:'Financial Planning', opts:['Não iniciado','Iniciado','Concluído']},
+  {key:'xpGlobal', label:'XP Global', opts:['Inativo','Ativo']},
+  {key:'mb', label:'Mercado Bitcoin', opts:['Inativo','Ativo']},
+  {key:'openFinance', label:'Open Finance', opts:['Sem permissão','Ativo']},
+  {key:'seguro', label:'PJ2 Seguro', opts:['Abordar seguro','R1 marcada','Pedir apólice']},
+  {key:'credito', label:'Crédito', opts:['Não apresentado','Apresentado','Aceito','Não aceito']},
+  {key:'cambio', label:'Câmbio/Global', opts:['Não apresentado','Apresentado','Aceito','Não aceito']},
+  {key:'consorcio', label:'Consórcio', opts:['Não apresentado','Apresentado','Aceito','Não aceito']},
+  {key:'previdencia', label:'Previdência', opts:['Não apresentado','Apresentado','Aceito','Não aceito']},
+  {key:'svnPremium', label:'SVN Premium', opts:['Não marcado','Marcado','Mapeado']},
+  {key:'dinheiroFora', label:'Dinheiro Fora', opts:['Não sei','Sei, mas não tenho detalhes','Sei e tenho detalhes','Temos combinado de trazer','Não vai trazer agora']}
+];
+function pj2StatusCliente(c, key){
+  const st = c.pj2status || {};
+  const prod = PJ2_PRODUTOS.find(p=>p.key===key);
+  return st[key] != null ? st[key] : (prod ? prod.opts[0] : '');
+}
+function updClientePj2(id, key, val){
+  const c = S.clientes.find(x=>x.id===id); if(!c) return;
+  if(!c.pj2status) c.pj2status = {};
+  c.pj2status[key] = val;
+  save();
+  // atualiza só a classe .set do select alterado (sem re-render completo)
+  const sel = document.querySelector(`#tblPj2Matrix select[data-id="${id}"][data-key="${key}"]`);
+  if(sel){ const def = PJ2_PRODUTOS.find(p=>p.key===key).opts[0]; sel.classList.toggle('set', val!==def); }
+}
+function renderPj2Matrix(){
+  const view = document.getElementById('view-pj2');
+  if(!view || !view.classList.contains('active')) return; // só monta quando a aba está aberta (matriz pesada)
+  const head = document.getElementById('pj2MatrixHead');
+  const body = document.getElementById('pj2MatrixBody');
+  if(!head || !body) return;
+  head.innerHTML = '<tr><th>Cliente</th>' + PJ2_PRODUTOS.map(p=>`<th>${esc(p.label)}</th>`).join('') + '</tr>';
+  const q = (document.getElementById('pj2Busca')?.value||'').trim().toLowerCase();
+  const arr = S.clientes.filter(clienteNomeado).filter(c=>{
+    if(!q) return true;
+    return (c.nome||'').toLowerCase().includes(q) || (c.codigo && String(c.codigo).includes(q));
+  }).sort((a,b)=>(a.nome||'').localeCompare(b.nome||''));
+  let html='';
+  arr.forEach(c=>{
+    html += '<tr><td>'+esc(c.nome)+'</td>';
+    PJ2_PRODUTOS.forEach(p=>{
+      const val = pj2StatusCliente(c, p.key);
+      const isSet = val !== p.opts[0];
+      const opts = p.opts.map(o=>`<option ${o===val?'selected':''}>${esc(o)}</option>`).join('');
+      html += `<td><select class="${isSet?'set':''}" data-id="${c.id}" data-key="${p.key}" onchange="updClientePj2('${c.id}','${p.key}',this.value)">${opts}</select></td>`;
+    });
+    html += '</tr>';
+  });
+  body.innerHTML = html || `<tr><td colspan="${PJ2_PRODUTOS.length+1}" class="empty">Nenhum cliente na base.</td></tr>`;
+}
+function exportPj2XLSX(){
+  const arr = S.clientes.filter(clienteNomeado).sort((a,b)=>(a.nome||'').localeCompare(b.nome||''));
+  if(!arr.length){ alert('Nenhum cliente para exportar.'); return; }
+  const data = arr.map(c=>{
+    const row = {'Cliente': c.nome||'', 'Código': c.codigo||''};
+    PJ2_PRODUTOS.forEach(p=>{ row[p.label] = pj2StatusCliente(c, p.key); });
+    return row;
+  });
+  const ws = XLSX.utils.json_to_sheet(data);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'PJ2 Status');
+  XLSX.writeFile(wb, 'pj2_status.xlsx');
 }
 
 // ============================================================
