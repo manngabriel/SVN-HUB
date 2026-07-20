@@ -2688,8 +2688,19 @@ th.num{text-align:right;}
         </div>
       </div>
       <div class="footer-note" style="margin:-6px 0 12px;">Importa o Positivador (.xlsx) e atualiza custódia, receita e captação da base pelo código do cliente.</div>
+      <style>
+        #tblClientes{table-layout:fixed; width:max-content; min-width:100%;}
+        #tblClientes th{position:relative; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+        #tblClientes td{overflow:hidden;}
+        #tblClientes td input, #tblClientes td select{max-width:100%; box-sizing:border-box;}
+        #tblClientes th .col-resizer{position:absolute; top:0; right:0; width:8px; height:100%; cursor:col-resize; user-select:none; touch-action:none;}
+        #tblClientes th .col-resizer:hover{background:var(--amber-soft);}
+      </style>
       <div style="overflow-x:auto;">
       <table id="tblClientes">
+        <colgroup>
+          <col style="width:34px"><col style="width:180px"><col style="width:86px"><col style="width:120px"><col style="width:120px"><col style="width:96px"><col style="width:120px"><col style="width:150px"><col style="width:72px"><col style="width:86px"><col style="width:56px"><col style="width:74px"><col style="width:84px"><col style="width:46px">
+        </colgroup>
         <thead><tr>
           <th class="noclick" style="width:34px;"></th>
           <th onclick="sortClientes('nome')">Cliente</th>
@@ -5435,6 +5446,30 @@ function renderTotais(){
   const tp = document.getElementById('totPossCap'); if(tp) tp.textContent = fmt(possCap);
   document.getElementById('totReunioes').textContent = vis.length + ' clientes na base';
 }
+
+// Colunas arrastáveis: arrasta a borda direita do cabeçalho pra ajustar largura
+function initResizableCols(tableId){
+  const table = document.getElementById(tableId); if(!table) return;
+  const cg = table.querySelector('colgroup'); if(!cg) return;
+  const cols = cg.children;
+  const ths = table.querySelectorAll('thead th');
+  ths.forEach((th,i)=>{
+    if(th.querySelector('.col-resizer')) return; // já tem
+    const h = document.createElement('div'); h.className='col-resizer';
+    th.appendChild(h);
+    h.addEventListener('click', e=>{ e.stopPropagation(); });
+    h.addEventListener('pointerdown', e=>{
+      e.preventDefault(); e.stopPropagation();
+      const startX = e.pageX;
+      const startW = cols[i] ? cols[i].getBoundingClientRect().width : th.getBoundingClientRect().width;
+      const move = ev=>{ const w = Math.max(32, startW + (ev.pageX-startX)); if(cols[i]) cols[i].style.width = w+'px'; };
+      const up = ()=>{ document.removeEventListener('pointermove',move); document.removeEventListener('pointerup',up); document.body.style.cursor=''; };
+      document.addEventListener('pointermove',move); document.addEventListener('pointerup',up);
+      document.body.style.cursor='col-resize';
+    });
+  });
+}
+document.addEventListener('DOMContentLoaded', ()=> initResizableCols('tblClientes'));
 
 // ============================================================
 // PLANEJAMENTO DE RECEITA (pipeline de receita por cliente/produto)
