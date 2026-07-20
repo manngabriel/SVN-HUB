@@ -2686,7 +2686,8 @@ th.num{text-align:right;}
         </div>
       </div>
       <style>
-        .main.wide-mode{max-width:none;}
+        .main.wide-mode{max-width:none; overflow-x:auto; flex:1 1 auto;}
+        #cardClientes{width:max-content; min-width:100%; max-width:none;}
         #tblClientes{table-layout:fixed; width:max-content; min-width:100%;}
         #tblClientes th{position:relative; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
         #tblClientes td{overflow:hidden;}
@@ -2699,7 +2700,7 @@ th.num{text-align:right;}
         #cliPickPop .cli-pick-item .cod{color:var(--ink-soft); font-size:11.5px;}
         #cliPickPop .cli-pick-empty{padding:10px; color:var(--ink-soft);}
       </style>
-      <div style="overflow-x:auto;">
+      <div>
       <table id="tblClientes">
         <colgroup>
           <col style="width:34px"><col style="width:180px"><col style="width:86px"><col style="width:120px"><col style="width:120px"><col style="width:96px"><col style="width:120px"><col style="width:210px"><col style="width:72px"><col style="width:86px"><col style="width:56px"><col style="width:74px"><col style="width:84px"><col style="width:46px">
