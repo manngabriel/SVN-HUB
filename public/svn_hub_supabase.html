@@ -2677,18 +2677,16 @@ th.num{text-align:right;}
 
   <!-- ================= CLIENTES ================= -->
   <div class="view" id="view-clientes">
-    <div class="card">
+    <div class="card" id="cardClientes">
       <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:14px;">
         <input class="search" id="buscaCliente" placeholder="Buscar cliente…" oninput="renderClientes()">
         <div style="display:flex; gap:8px;">
           <button class="btn ghost" onclick="tierizarAuto()">Tierizar por receita</button>
-          <button class="btn ghost" onclick="document.getElementById('positivadorInput').click()">Importar Positivador</button>
-          <input type="file" id="positivadorInput" accept=".xlsx" style="display:none" onchange="importarPositivador(event)">
           <button class="btn solid" onclick="addCliente()">+ Cliente</button>
         </div>
       </div>
-      <div class="footer-note" style="margin:-6px 0 12px;">Importa o Positivador (.xlsx) e atualiza custódia, receita e captação da base pelo código do cliente.</div>
       <style>
+        #cardClientes{resize:horizontal; overflow:auto; max-width:100%; min-width:340px;}
         #tblClientes{table-layout:fixed; width:max-content; min-width:100%;}
         #tblClientes th{position:relative; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
         #tblClientes td{overflow:hidden;}
@@ -2699,7 +2697,7 @@ th.num{text-align:right;}
       <div style="overflow-x:auto;">
       <table id="tblClientes">
         <colgroup>
-          <col style="width:34px"><col style="width:180px"><col style="width:86px"><col style="width:120px"><col style="width:120px"><col style="width:96px"><col style="width:120px"><col style="width:150px"><col style="width:72px"><col style="width:86px"><col style="width:56px"><col style="width:74px"><col style="width:84px"><col style="width:46px">
+          <col style="width:34px"><col style="width:180px"><col style="width:86px"><col style="width:120px"><col style="width:120px"><col style="width:96px"><col style="width:120px"><col style="width:210px"><col style="width:72px"><col style="width:86px"><col style="width:56px"><col style="width:74px"><col style="width:84px"><col style="width:46px">
         </colgroup>
         <thead><tr>
           <th class="noclick" style="width:34px;"></th>
@@ -5411,10 +5409,10 @@ function renderClientes(){
         <option value="3" ${c.tier==='3'?'selected':''}>Tier 3</option>
       </select></td>
       <td class="num" style="color:var(--ink-soft); white-space:nowrap;">${(()=>{const p=possibilidadeCaptacaoCliente(c); return p?fmt(p):'R$0';})()}</td>
-      <td><select onchange="updCliente('${c.id}','modelo',this.value); renderClientes();">
+      <td><div style="display:flex; align-items:center; gap:6px;"><select style="flex:1; min-width:0;" onchange="updCliente('${c.id}','modelo',this.value); renderClientes();">
         <option ${modelo==='Comission based'?'selected':''}>Comission based</option>
         <option ${modelo==='Fee Fixo'?'selected':''}>Fee Fixo</option>
-      </select>${modelo==='Fee Fixo'?`<input type="number" value="${c.feeTaxa!=null&&c.feeTaxa!==''?c.feeTaxa:''}" min="0" step="0.05" placeholder="% a.a" title="Taxa anual combinada (%)" style="width:74px; margin-top:4px; text-align:right;" onchange="updCliente('${c.id}','feeTaxa',parseFloat(this.value)||0)">`:''}</td>
+      </select>${modelo==='Fee Fixo'?`<span style="display:inline-flex; align-items:center; gap:2px; white-space:nowrap;"><input type="number" value="${c.feeTaxa!=null&&c.feeTaxa!==''?c.feeTaxa:''}" min="0" step="0.05" placeholder="a.a" title="Taxa anual combinada (%)" style="width:56px; text-align:right;" onchange="updCliente('${c.id}','feeTaxa',parseFloat(this.value)||0)"><b style="color:var(--ink-soft);">%</b></span>`:''}</div></td>
       ${chk('seguro')}${chk('consorcio')}${chk('mb')}${chk('internacional')}${chk('planning')}
       <td><button class="btn danger" title="Remover" onclick="delCliente('${c.id}')">×</button></td>
     </tr>
