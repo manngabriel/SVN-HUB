@@ -2595,6 +2595,7 @@ th.num{text-align:right;}
   <div class="nav-label">Dados</div>
   <button class="nav-item" id="nav-positivador" onclick="showView('positivador')"><span class="ic">⬆</span>Upload Positivador</button>
   <div class="sidebar-footer">
+    <button class="mini-btn" style="width:100%; margin-bottom:6px;" onclick="openNavNamesModal()">✎ Editar nomes das abas</button>
     <div class="mini-btns">
       <button class="mini-btn" onclick="exportarDados()">Exportar</button>
       <button class="mini-btn" onclick="document.getElementById('importFile').click()">Importar</button>
@@ -2729,6 +2730,15 @@ th.num{text-align:right;}
     .modal-box{background:#fff; border-radius:16px; width:100%; max-width:760px; padding:24px 26px; box-shadow:0 24px 60px rgba(0,0,0,.3);}
     .modal-head{display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:16px;}
   </style>
+  <div id="navNamesModal" class="modal-overlay" onclick="if(event.target===this)closeNavNamesModal()">
+    <div class="modal-box" style="max-width:460px;">
+      <div class="modal-head">
+        <div><h2 style="font-family:'Fraunces',serif; font-weight:500; font-size:22px;">Nomes das abas</h2><div class="desc" style="margin:0;">Renomeie as abas do menu. Deixe vazio para manter o atual.</div></div>
+        <button class="btn ghost" onclick="closeNavNamesModal()">Fechar ✕</button>
+      </div>
+      <div id="navNamesList"></div>
+    </div>
+  </div>
   <div id="tarefasModal" class="modal-overlay" onclick="if(event.target===this)closeTarefasModal()">
     <div class="modal-box">
       <div class="modal-head">
@@ -5035,6 +5045,7 @@ let S = {
   clientes: [],
   r2decks: [],
   pipeline: [],
+  navNames: {},
   todos: [],
   planReceita: [],
   planReceitaPassiva: 0,
@@ -5094,6 +5105,7 @@ async function load(){
   if(!S.materiais || !S.materiais.length) S.materiais = MAT_DEFAULT;
   if(!Array.isArray(S.r2decks)) S.r2decks = [];
   if(!Array.isArray(S.todos)) S.todos = [];
+  if(!S.navNames || typeof S.navNames !== 'object') S.navNames = {};
   if(!Array.isArray(S.planReceita)) S.planReceita = [];
   if(!Array.isArray(S.planProdutos) || !S.planProdutos.length) S.planProdutos = PLAN_PRODUTOS_DEFAULT.map(p=>({...p}));
   if(typeof S.planReceitaPassiva !== 'number') S.planReceitaPassiva = 0;
@@ -5193,7 +5205,7 @@ function showView(v){
   document.querySelectorAll('.nav-item').forEach(el=>el.classList.remove('active'));
   document.getElementById('view-'+v).classList.add('active');
   document.getElementById('nav-'+v).classList.add('active');
-  document.getElementById('viewTitle').textContent = TITLES[v][0];
+  document.getElementById('viewTitle').textContent = (S.navNames && S.navNames['nav-'+v]) || TITLES[v][0];
   document.getElementById('viewSub').textContent = TITLES[v][1];
   document.getElementById('topbarRight').style.display = GESTAO_VIEWS.includes(v) ? 'flex' : 'none';
   document.querySelector('.main').classList.toggle('deck-mode', ['fee-fixo','svn-r2','p10k'].includes(v));
@@ -5222,6 +5234,7 @@ function renderAll(){
   renderPainel();
   renderClientes();
   renderClienteList();
+  applyNavNames();
   renderPipeline();
   renderTodos();
   renderPlanReceita();
@@ -5685,9 +5698,37 @@ function addTodo(txtId, cliId){
   inp.value=''; if(cliEl) cliEl.value='';
   renderTodos(); save();
 }
+// ---- Renomear abas do menu ----
+function collectNavButtons(){ return [...document.querySelectorAll('nav.sidebar .nav-item')].filter(b=>b.id && b.id.startsWith('nav-') && !b.id.startsWith('nav-tool')); }
+function navLabelNode(btn){ return [...btn.childNodes].find(n=>n.nodeType===3 && n.textContent.trim()!==''); }
+function applyNavNames(){
+  if(!S.navNames) return;
+  collectNavButtons().forEach(btn=>{
+    const custom = S.navNames[btn.id];
+    if(custom!=null && custom!==''){ const node=navLabelNode(btn); if(node) node.textContent = custom; }
+  });
+}
+function openNavNamesModal(){
+  const box = document.getElementById('navNamesList');
+  box.innerHTML = collectNavButtons().map(btn=>{
+    const node = navLabelNode(btn); const lbl = node?node.textContent.trim():btn.id;
+    const ic = btn.querySelector('.ic'); const icon = ic?ic.textContent:'';
+    return `<div style="display:flex; align-items:center; gap:10px; padding:6px 0; border-bottom:1px solid var(--cream-2);"><span style="width:22px; text-align:center;">${esc(icon)}</span><input type="text" value="${esc(lbl)}" style="flex:1;" onchange="saveNavName('${btn.id}',this.value)"></div>`;
+  }).join('');
+  document.getElementById('navNamesModal').style.display='flex';
+}
+function closeNavNamesModal(){ const m=document.getElementById('navNamesModal'); if(m) m.style.display='none'; }
+function saveNavName(id, val){
+  if(!S.navNames) S.navNames={};
+  val = (val||'').trim();
+  if(val) S.navNames[id]=val; else delete S.navNames[id];
+  applyNavNames(); save();
+  const cur = document.querySelector('.nav-item.active');
+  if(cur){ const v=cur.id.replace('nav-',''); const t=document.getElementById('viewTitle'); if(t && TITLES[v]) t.textContent = S.navNames['nav-'+v] || TITLES[v][0]; }
+}
 function openTarefasModal(){ const m=document.getElementById('tarefasModal'); if(m){ m.style.display='flex'; renderTodos(); const t=document.getElementById('todoTexto'); if(t) setTimeout(()=>t.focus(),50); } }
 function closeTarefasModal(){ const m=document.getElementById('tarefasModal'); if(m) m.style.display='none'; }
-document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeTarefasModal(); });
+document.addEventListener('keydown', e=>{ if(e.key==='Escape'){ closeTarefasModal(); closeNavNamesModal(); } });
 function toggleTodo(id){ const t=S.todos.find(x=>x.id===id); if(!t) return; t.feito=!t.feito; renderTodos(); save(); }
 function updTodo(id,k,v){ const t=S.todos.find(x=>x.id===id); if(!t) return; t[k]=v; save(); renderTodos(); }
 function delTodo(id){ S.todos=S.todos.filter(x=>x.id!==id); renderTodos(); save(); }
