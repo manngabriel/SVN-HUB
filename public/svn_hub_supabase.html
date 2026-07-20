@@ -8974,14 +8974,65 @@ document.getElementById('snPasteZone').addEventListener('paste', function(e){
   const mesKey = snMesSelecionado;
   const r = new FileReader();
   r.onload = () => {
-    const imagemB64 = r.result;
-    snAbrirModalCliente('', '', (c)=>{
-      snIngest(mesKey, c.codigo, c.nome, 'xpGlobal', {imagemB64, patrimonio:0, ganhoMes:0, ganhoAno:0});
-      snSetStatus(`XP Global colado — ${c.nome}. Preencha o patrimônio no detalhe do cliente.`, false);
-    });
+    snAbrirModalXpGlobal(mesKey, r.result);
   };
   r.readAsDataURL(imgFile);
 });
+function snAbrirModalXpGlobal(mesKey, imagemB64){
+  let bg = document.getElementById('snModalBg');
+  if(!bg){
+    bg = document.createElement('div');
+    bg.id = 'snModalBg';
+    bg.className = 'sn-modal-bg';
+    document.body.appendChild(bg);
+  }
+  const opcoes = S.clientes.map(c=>`<option value="${esc(c.codigo)}">${esc(c.nome||c.codigo)}</option>`).join('');
+  bg.innerHTML = `<div class="sn-modal">
+    <h3>Print da XP Global</h3>
+    <img src="${imagemB64}" style="max-width:100%; max-height:160px; border-radius:8px; margin:6px 0 10px; display:block;">
+    <label>Cliente</label>
+    <select id="snModalSelect"><option value="">— criar novo —</option>${opcoes}</select>
+    <label>Nome (se for criar novo)</label>
+    <input type="text" id="snModalNome" placeholder="Nome do cliente">
+    <label>Código (opcional — só se souber a conta)</label>
+    <input type="text" id="snModalCodigo" placeholder="Código da conta">
+    <label>Patrimônio</label>
+    <input type="number" id="snModalPatrimonio" value="0">
+    <label>Ganho no mês</label>
+    <input type="number" id="snModalGanhoMes" value="0">
+    <label>Ganho no ano</label>
+    <input type="number" id="snModalGanhoAno" value="0">
+    <div class="btn-row">
+      <button class="btn ghost" onclick="document.getElementById('snModalBg').classList.remove('open')">Cancelar</button>
+      <button class="btn solid" onclick="snConfirmarModalXpGlobal('${mesKey}')">Salvar</button>
+    </div>
+  </div>`;
+  bg.dataset.imagem = imagemB64;
+  bg.classList.add('open');
+}
+function snConfirmarModalXpGlobal(mesKey){
+  const bg = document.getElementById('snModalBg');
+  const sel = document.getElementById('snModalSelect').value;
+  let cliente;
+  if(sel){
+    cliente = S.clientes.find(x=>x.codigo===sel);
+  } else {
+    const nome = document.getElementById('snModalNome').value.trim();
+    const codigo = document.getElementById('snModalCodigo').value.trim();
+    cliente = {id:m8(), nome, codigo, custodia:0, receita:0, tier:'3', reuniao:false, oportunidade:'', notas:''};
+    S.clientes.push(cliente);
+    save();
+  }
+  if(!cliente) return;
+  const patrimonio = parseFloat(document.getElementById('snModalPatrimonio').value) || 0;
+  const ganhoMes = parseFloat(document.getElementById('snModalGanhoMes').value) || 0;
+  const ganhoAno = parseFloat(document.getElementById('snModalGanhoAno').value) || 0;
+  const imagemB64 = bg.dataset.imagem;
+  bg.classList.remove('open');
+  const chave = cliente.codigo || cliente.id;
+  snIngest(mesKey, chave, cliente.nome, 'xpGlobal', {imagemB64, patrimonio, ganhoMes, ganhoAno});
+  snSetStatus(`XP Global salvo — ${cliente.nome} (${fmt(patrimonio)}).`, false);
+}
 
 // ---------------- Render do consolidado (detalhe cliente+mês) ----------------
 function snRenderAlocacao(c){
