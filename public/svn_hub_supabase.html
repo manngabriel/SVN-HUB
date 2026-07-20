@@ -2682,10 +2682,9 @@ th.num{text-align:right;}
           <div class="field" style="flex:1;"><label>Meta de receita (auto)</label><input type="text" id="inMetaReceita" readonly title="(Custódia XP + Custódia MB) × 0,006 ÷ 12" style="background:var(--cream-2);"></div>
         </div>
         <div class="inline-fields" style="margin-bottom:12px;">
-          <div class="field" style="flex:1;"><label>Captação líquida</label><input type="text" inputmode="numeric" id="inCaptacao" oninput="maskMoeda(this)" onchange="setMeta('captacao', parseMoeda(this))"></div>
+          <div class="field" style="flex:1;"><label>Captação líquida</label><input type="text" inputmode="text" id="inCaptacao" placeholder="pode ser negativo" oninput="maskMoedaNeg(this)" onchange="setMeta('captacao', parseMoedaNeg(this))"></div>
           <div class="field" style="flex:1;"><label>Meta de captação</label><input type="text" inputmode="numeric" id="inMetaCaptacao" oninput="maskMoeda(this)" onchange="setMeta('metaCaptacao', parseMoeda(this))"></div>
         </div>
-        <div class="footer-note">Meta de receita = (Custódia XP da base + Custódia MB) × 0,006 ÷ 12. Penetração de campanha (meta 20% da base) conta automático os clientes com linha Feito/Reservado no Planejamento de Receita.</div>
       </div>
     </div>
 
@@ -2824,25 +2823,22 @@ th.num{text-align:right;}
 
   <!-- ================= CAPTAÇÃO ================= -->
   <div class="view" id="view-captacao">
-    <div class="grid c3" style="margin-bottom:18px;">
+    <div class="grid c2" style="margin-bottom:18px;">
       <div class="kpi"><div class="l">Pipeline total</div><div class="v" id="kpiPipeTotal">R$0</div><div class="s" id="kpiPipeCount">0 negócios</div></div>
-      <div class="kpi"><div class="l">Pipeline ponderado</div><div class="v" id="kpiPipePond">R$0</div><div class="s">valor × probabilidade</div></div>
       <div class="kpi dark"><div class="l">Captação líquida do mês</div><div class="v" id="kpiCapt2">R$0</div><div class="s" id="kpiCaptMeta">meta &gt; R$1MM (tripé)</div></div>
     </div>
 
     <div class="card">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:10px;">
-        <div><h2>Pipeline de captação</h2><div class="desc" style="margin:0;">Processo: Lead → R1 (SPIN) → R2 (proposta) → Fechamento. Cadência de contato 8·3·1.</div></div>
+        <div><h2>Pipeline de captação</h2><div class="desc" style="margin:0;">Lead ou SOW (share of wallet). No SOW, selecione o cliente da base.</div></div>
         <button class="btn solid" onclick="addDeal()">+ Negócio</button>
       </div>
       <div style="overflow-x:auto;">
       <table>
         <thead><tr>
-          <th class="noclick">Nome / origem</th>
-          <th class="num noclick">Valor potencial</th>
           <th class="noclick">Etapa</th>
-          <th class="num noclick">Prob. %</th>
-          <th class="num noclick">Ponderado</th>
+          <th class="noclick">Cliente / origem</th>
+          <th class="num noclick">Valor potencial</th>
           <th class="noclick">Próximo passo</th>
           <th class="noclick"></th>
         </tr></thead>
@@ -2882,12 +2878,12 @@ th.num{text-align:right;}
       <div style="overflow-x:auto;">
       <table id="tblPlanReceita">
         <thead><tr>
-          <th>Cliente</th>
-          <th class="num">Valor (R$)</th>
-          <th>Aplicação</th>
-          <th class="num">ROA (%)</th>
-          <th class="num">Receita gerada</th>
-          <th>Status</th>
+          <th onclick="sortPlan('cliente')">Cliente</th>
+          <th class="num" onclick="sortPlan('valor')">Valor (R$)</th>
+          <th onclick="sortPlan('produto')">Aplicação</th>
+          <th class="num" onclick="sortPlan('roa')">ROA (%)</th>
+          <th class="num" onclick="sortPlan('receita')">Receita gerada</th>
+          <th onclick="sortPlan('status')">Status</th>
           <th class="noclick"></th>
         </tr></thead>
         <tbody id="planBody"></tbody>
@@ -2903,7 +2899,7 @@ th.num{text-align:right;}
       </div>
     </div>
 
-    <div class="card">
+    <div class="card" style="max-width:480px;">
       <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:12px;">
         <div><div class="eyebrow">Produtos & ROA</div><div class="desc" style="margin:0;">ROA predefinido por produto — usado ao selecionar a aplicação em cada linha.</div></div>
         <button class="btn solid" onclick="addPlanProduto()">+ Produto</button>
@@ -4943,7 +4939,7 @@ th.num{text-align:right;}
 // ESTADO
 // ============================================================
 const LS_KEY = 'svn_hub_v1';
-const ETAPAS = ['Lead','R1','R2','Proposta','Fechado'];
+const ETAPAS = ['Lead','SOW'];
 const OPORTUNIDADES = ['','Fee fixo','Aporte','Previdência','Seguro','Consórcio','Planejamento','Internacional','Outro'];
 const CODIGO_NOME = {
   '95097':"Miguel Falci Camara",
@@ -5299,12 +5295,11 @@ function renderPainelOportunidades(){
     : '<div class="empty">Sem receita prevista no Planejamento.</div>';
   // Captação (pipeline)
   const captTot = (S.pipeline||[]).reduce((a,d)=>a+(+d.valor||0),0);
-  const pond = (S.pipeline||[]).reduce((a,d)=>a+(+d.valor||0)*(clamp(+d.prob||0,0,100)/100),0);
   document.getElementById('opoCaptTot').textContent = money(captTot);
-  document.getElementById('opoCaptSub').textContent = 'ponderado ' + money(pond);
+  document.getElementById('opoCaptSub').textContent = (S.pipeline||[]).length + ' negócio(s) no pipeline';
   const topCap = [...(S.pipeline||[])].sort((a,b)=>(+b.valor||0)-(+a.valor||0)).slice(0,6);
   document.getElementById('opoCaptLista').innerHTML = topCap.length
-    ? topCap.map(d=>`<div class="op-item"><span class="who">${esc(d.nome||'—')}</span><span class="what">${esc(d.etapa||'')}${d.prob?' · '+d.prob+'%':''}</span><span class="tag">${money(d.valor)}</span></div>`).join('')
+    ? topCap.map(d=>`<div class="op-item"><span class="who">${esc(d.nome||'—')}</span><span class="what">${esc(d.etapa||'')}</span><span class="tag">${money(d.valor)}</span></div>`).join('')
     : '<div class="empty">Nenhum negócio no pipeline.</div>';
 }
 
@@ -5335,6 +5330,19 @@ function maskMoeda(el){
   const num = digits ? parseInt(digits, 10) : 0;
   el.value = num ? fmt(num) : '';
   el.setSelectionRange(el.value.length, el.value.length);
+}
+function maskMoedaNeg(el){
+  const neg = el.value.trim().startsWith('-');
+  const digits = el.value.replace(/\D/g, '');
+  const num = digits ? parseInt(digits, 10) : 0;
+  el.value = num ? (neg?'-':'')+fmt(num) : (neg?'-':'');
+  el.setSelectionRange(el.value.length, el.value.length);
+}
+function parseMoedaNeg(el){
+  const neg = el.value.trim().startsWith('-');
+  const digits = el.value.replace(/\D/g, '');
+  const n = digits ? parseInt(digits, 10) : 0;
+  return neg ? -n : n;
 }
 function parseMoeda(el){
   const digits = el.value.replace(/\D/g, '');
@@ -5789,11 +5797,26 @@ function updPlan(id,k,v){
   save(); renderPlanReceita();
 }
 function planReceitaLinha(r){ return (+r.valor||0)*((+r.roa||0)/100); }
+let planSortKey = null, planSortDir = 1;
+function sortPlan(k){
+  if(planSortKey===k) planSortDir*=-1; else { planSortKey=k; planSortDir = (k==='cliente'||k==='produto'||k==='status')?1:-1; }
+  renderPlanReceita();
+}
 function renderPlanReceita(){
   const body = document.getElementById('planBody'); if(!body) return;
   const prodOptions = (S.planProdutos||[]).map(p=>p.nome);
+  let arr = [...S.planReceita];
+  if(planSortKey){
+    const num = ['valor','roa','receita'].includes(planSortKey);
+    arr.sort((a,b)=>{
+      let va = planSortKey==='receita' ? planReceitaLinha(a) : a[planSortKey];
+      let vb = planSortKey==='receita' ? planReceitaLinha(b) : b[planSortKey];
+      if(num) return ((+va||0)-(+vb||0))*planSortDir;
+      return String(va||'').localeCompare(String(vb||''))*planSortDir;
+    });
+  }
   let html='';
-  S.planReceita.forEach(r=>{
+  arr.forEach(r=>{
     const rec = planReceitaLinha(r);
     const opts = ['', ...prodOptions].map(o=>`<option ${o===r.produto?'selected':''}>${esc(o)}</option>`).join('');
     const stOpts = PLAN_STATUS.map(s=>`<option ${s===r.status?'selected':''}>${s}</option>`).join('');
@@ -6051,26 +6074,24 @@ function updDeal(id,k,v){
 function renderPipeline(){
   const c = calc(); const M = c.M;
   let html='';
-  const arr = [...S.pipeline].sort((a,b)=>(+b.valor||0)*(+b.prob||0)-(+a.valor||0)*(+a.prob||0));
+  const arr = [...S.pipeline].sort((a,b)=>(+b.valor||0)-(+a.valor||0));
   arr.forEach(d=>{
-    const pond = (+d.valor||0)*(clamp(+d.prob||0,0,100)/100);
     const etOptions = ETAPAS.map(e=>`<option ${e===d.etapa?'selected':''}>${e}</option>`).join('');
+    const clienteCell = d.etapa==='SOW'
+      ? `<input type="text" value="${esc(d.nome)}" placeholder="Cliente da base" autocomplete="off" onfocus="cliPickOpen(this)" oninput="cliPickRender()" onchange="updDeal('${d.id}','nome',this.value)">`
+      : `<input type="text" value="${esc(d.nome)}" placeholder="Nome / origem do lead" onchange="updDeal('${d.id}','nome',this.value)">`;
     html += `<tr>
-      <td><input type="text" value="${esc(d.nome)}" placeholder="Nome ou código do cliente" autocomplete="off" onfocus="cliPickOpen(this)" oninput="cliPickRender()" onchange="updDeal('${d.id}','nome',this.value)"></td>
+      <td><select onchange="updDeal('${d.id}','etapa',this.value); renderPipeline();">${etOptions}</select></td>
+      <td>${clienteCell}</td>
       <td class="num"><input type="text" inputmode="numeric" value="${d.valor?fmt(d.valor):''}" placeholder="R$0" style="text-align:right" oninput="maskMoeda(this)" onchange="updDeal('${d.id}','valor',parseMoeda(this))"></td>
-      <td><select onchange="updDeal('${d.id}','etapa',this.value)">${etOptions}</select></td>
-      <td class="num"><input type="number" value="${d.prob||''}" min="0" max="100" style="text-align:right; width:64px;" onchange="updDeal('${d.id}','prob',this.value)"></td>
-      <td class="num" style="color:var(--amber); font-weight:600;">${fmt(pond)}</td>
       <td><input type="text" value="${esc(d.proximo)}" placeholder="Próximo passo…" onchange="updDeal('${d.id}','proximo',this.value)"></td>
       <td><button class="btn danger" onclick="delDeal('${d.id}')">×</button></td>
     </tr>`;
   });
-  document.getElementById('pipeBody').innerHTML = html || '<tr><td colspan="7" class="empty">Nenhum negócio no pipeline. Adicione leads e indicações aqui.</td></tr>';
+  document.getElementById('pipeBody').innerHTML = html || '<tr><td colspan="5" class="empty">Nenhum negócio no pipeline. Adicione leads e SOW aqui.</td></tr>';
   const total = S.pipeline.reduce((a,d)=>a+(+d.valor||0),0);
-  const pond = S.pipeline.reduce((a,d)=>a+(+d.valor||0)*(clamp(+d.prob||0,0,100)/100),0);
   document.getElementById('kpiPipeTotal').textContent = fmt(total);
-  document.getElementById('kpiPipeCount').textContent = S.pipeline.length + ' negócios · ' + S.pipeline.filter(d=>d.etapa!=='Fechado').length + ' ativos';
-  document.getElementById('kpiPipePond').textContent = fmt(pond);
+  document.getElementById('kpiPipeCount').textContent = S.pipeline.length + ' negócios · ' + S.pipeline.filter(d=>d.etapa==='SOW').length + ' SOW';
   document.getElementById('kpiCapt2').textContent = fmt(M.captacao);
   document.getElementById('kpiCaptMeta').textContent = M.captacao>1000000 ? 'meta > R$1MM atingida ✓' : 'meta > R$1MM (tripé)';
   // funil (editável)
