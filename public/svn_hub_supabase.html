@@ -166,6 +166,30 @@ th.num{text-align:right;}
 .sn-modal select, .sn-modal input{width:100%; padding:9px; border:1px solid var(--line); border-radius:8px; font-family:inherit; font-size:13px;}
 .sn-modal .btn-row{display:flex; gap:10px; justify-content:flex-end; margin-top:16px;}
 
+/* supernova · apresentação (mesmo motor do Simulador de Carteira, escopado aqui) */
+#view-supernova #snPresentView{position:fixed; inset:0; background:var(--charcoal); z-index:200; display:none; flex-direction:column;}
+#view-supernova #snPresentView .present-stage{flex:1; position:relative; overflow:hidden;}
+#view-supernova #snPresentView .slide{position:absolute; inset:0; display:flex; flex-direction:column; justify-content:center; padding:60px 90px; opacity:0; pointer-events:none; transition:opacity .35s ease; overflow-y:auto;}
+#view-supernova #snPresentView .slide.active{opacity:1; pointer-events:auto;}
+#view-supernova #snPresentView .slide.bg-charcoal{background:var(--charcoal); color:var(--cream-on-dark);}
+#view-supernova #snPresentView .slide.bg-cream{background:var(--cream); color:var(--ink);}
+#view-supernova #snPresentView .slide.bg-cream2{background:var(--cream-2); color:var(--ink);}
+#view-supernova #snPresentView .slide .eyebrow{font-size:12px; letter-spacing:.16em; text-transform:uppercase; color:var(--amber); font-weight:600;}
+#view-supernova #snPresentView .slide.bg-charcoal .eyebrow{color:var(--amber-soft);}
+#view-supernova #snPresentView .slide h1.big{font-family:'Fraunces',serif; font-size:50px; font-weight:400; margin:10px 0 16px;}
+#view-supernova #snPresentView .slide h2.title{font-family:'Fraunces',serif; font-size:30px; font-weight:500; margin:8px 0 22px;}
+#view-supernova #snPresentView .slide .sub{font-size:14.5px; color:var(--ink-soft); max-width:640px; white-space:pre-wrap;}
+#view-supernova #snPresentView .slide.bg-charcoal .sub{color:#c9beb2;}
+#view-supernova #snPresentView .slide .cover-date{margin-top:36px; font-size:13.5px; color:#c9beb2;}
+#view-supernova #snPresentView .slide table{width:100%; border-collapse:collapse; font-size:13px;}
+#view-supernova #snPresentView .slide.bg-charcoal table thead th{background:rgba(255,255,255,.1); color:#fff;}
+#view-supernova #snPresentView .slide.bg-charcoal td{color:var(--cream-on-dark); border-color:var(--line-dark);}
+#view-supernova #snPresentView .present-nav{display:flex; align-items:center; justify-content:center; gap:20px; padding:16px; background:var(--charcoal); border-top:1px solid var(--line-dark);}
+#view-supernova #snPresentView .nav-dots{display:flex; gap:8px;}
+#view-supernova #snPresentView .nav-dot{width:8px; height:8px; border-radius:50%; background:var(--line-dark); cursor:pointer;}
+#view-supernova #snPresentView .nav-dot.active{background:var(--amber);}
+#view-supernova #snPresentView .exit-present{position:absolute; top:22px; right:30px; z-index:5;}
+
 /* ---------- FERRAMENTA: COMPARADOR FINANCIAMENTO × CONSÓRCIO (isolado) ---------- */
 #view-cet-fin{
   --cet-cream:#F7F2EA; --cet-paper:#FCFAF5; --cet-ink:#3A2C24; --cet-ink-soft:#7A6A5E;
@@ -4870,6 +4894,52 @@ th.num{text-align:right;}
 
     <div id="snListaMes"></div>
     <div id="snDetalheCliente" style="display:none;"></div>
+
+    <!-- SUPERNOVA · APRESENTAÇÃO -->
+    <div id="snPresentView">
+      <button class="btn ghost ondark exit-present" onclick="snExitPresent()">✕ Sair da apresentação</button>
+      <div class="present-stage">
+        <div class="slide bg-charcoal" data-slide="0">
+          <span class="eyebrow">Relatório de Investimentos</span>
+          <h1 class="big" id="snSlideNome">Cliente</h1>
+          <p class="sub" id="snSlideCodigoMes"></p>
+          <div class="cover-date" id="snSlideData"></div>
+        </div>
+        <div class="slide bg-cream" data-slide="1">
+          <span class="eyebrow">Panorama</span><h2 class="title">O que aconteceu no mês</h2>
+          <div class="sub" id="snSlidePanorama"></div>
+        </div>
+        <div class="slide bg-cream2" data-slide="2">
+          <span class="eyebrow">Índices do mês</span><h2 class="title">Brasil &amp; EUA</h2>
+          <div id="snSlideIndices"></div>
+        </div>
+        <div class="slide bg-charcoal" data-slide="3">
+          <span class="eyebrow">Visão consolidada</span><h2 class="title">Patrimônio · XP + MB + XP Global</h2>
+          <div id="snSlideConsolidado"></div>
+        </div>
+        <div class="slide bg-cream" data-slide="4">
+          <span class="eyebrow">Alocação</span><h2 class="title">Consolidada por classe</h2>
+          <div id="snSlideAlocacao"></div>
+        </div>
+        <div class="slide bg-cream2" data-slide="5">
+          <span class="eyebrow">Benchmark</span><h2 class="title">Portfólio vs. índices</h2>
+          <div id="snSlideBenchmark"></div>
+        </div>
+        <div class="slide bg-cream" data-slide="6">
+          <span class="eyebrow">Destaques</span><h2 class="title">Rentabilidade no mês</h2>
+          <div id="snSlideDestaques"></div>
+        </div>
+        <div class="slide bg-charcoal" data-slide="7">
+          <span class="eyebrow">Oportunidade</span><h2 class="title">Sugestão para o cliente</h2>
+          <div class="sub" id="snSlideOportunidade"></div>
+        </div>
+      </div>
+      <div class="present-nav">
+        <button class="btn sm ghost ondark" onclick="snGoToSlide(snCurrentSlide-1)">← Anterior</button>
+        <div class="nav-dots" id="snNavDots"></div>
+        <button class="btn sm ghost ondark" onclick="snGoToSlide(snCurrentSlide+1)">Próximo →</button>
+      </div>
+    </div>
   </div>
 
   <!-- ================= POSITIVADOR ================= -->
@@ -8542,6 +8612,15 @@ scRenderNavDots();
 // ============================================================
 const MES_PT = {janeiro:1,fevereiro:2,'março':3,marco:3,abril:4,maio:5,junho:6,julho:7,agosto:8,setembro:9,outubro:10,novembro:11,dezembro:12};
 const SN_ESTRATEGIAS = ['Pós Fixado','Inflação','Pré Fixado','Caixa','Proventos'];
+const SN_INDICES = [
+  ['ibovespa','Ibovespa'], ['cdi','CDI'], ['dolar','Dólar'], ['ifix','IFIX'], ['ihfa','IHFA'], ['ipca15','IPCA-15'],
+  ['sp500','S&P 500'], ['nasdaq','Nasdaq'], ['dowjones','Dow Jones'],
+];
+function snIndicesVazios(){
+  const o = {};
+  SN_INDICES.forEach(([k])=>{ o[k] = {mes:0, ano:0}; });
+  return o;
+}
 
 let snMesSelecionado = null;
 let snClienteSelecionado = null;
@@ -8556,7 +8635,7 @@ function snPatrimonioTotal(c){
 // ---------------- Navegação (mês / lista / detalhe) ----------------
 function snNovoMes(){
   const hoje = mesHoje();
-  if(!S.supernova[hoje]) S.supernova[hoje] = {panorama:'', clientes:{}};
+  if(!S.supernova[hoje]) S.supernova[hoje] = {panorama:'', indices: snIndicesVazios(), clientes:{}};
   snMesSelecionado = hoje;
   save(); renderSupernova();
 }
@@ -8683,7 +8762,7 @@ function snConfirmarModalCliente(){
   if(cb && cliente) cb(cliente);
 }
 function snIngest(mesKey, codigo, nome, tipo, dados){
-  if(!S.supernova[mesKey]) S.supernova[mesKey] = {panorama:'', clientes:{}};
+  if(!S.supernova[mesKey]) S.supernova[mesKey] = {panorama:'', indices: snIndicesVazios(), clientes:{}};
   const bucket = S.supernova[mesKey].clientes;
   if(!bucket[codigo]) bucket[codigo] = {codigo, nome, xp:null, mb:null, xpGlobal:null, oportunidade:'', atualizadoEm:Date.now()};
   bucket[codigo].nome = bucket[codigo].nome || nome;
@@ -8954,6 +9033,30 @@ function snUpdPanorama(mesKey, val){
   S.supernova[mesKey].panorama = val;
   save();
 }
+function snUpdIndice(mesKey, chave, campo, val){
+  const bucket = S.supernova[mesKey];
+  if(!bucket) return;
+  if(!bucket.indices) bucket.indices = snIndicesVazios();
+  if(!bucket.indices[chave]) bucket.indices[chave] = {mes:0, ano:0};
+  bucket.indices[chave][campo] = parseFloat(val) || 0;
+  save();
+}
+function snRenderIndicesEditor(mesKey){
+  const indices = (S.supernova[mesKey] && S.supernova[mesKey].indices) || snIndicesVazios();
+  const linha = ([chave, nome]) => {
+    const v = indices[chave] || {mes:0, ano:0};
+    return `<tr><td>${esc(nome)}</td>
+      <td class="num"><input type="number" step="0.01" value="${v.mes}" style="width:80px; text-align:right;" onchange="snUpdIndice('${mesKey}','${chave}','mes',this.value)"></td>
+      <td class="num"><input type="number" step="0.01" value="${v.ano}" style="width:80px; text-align:right;" onchange="snUpdIndice('${mesKey}','${chave}','ano',this.value)"></td>
+    </tr>`;
+  };
+  return `<table>
+    <tr><th>Índice</th><th class="num">Mês %</th><th class="num">Ano %</th></tr>
+    ${SN_INDICES.slice(0,6).map(linha).join('')}
+    <tr><td colspan="3" style="font-size:11px; color:var(--ink-soft); padding-top:10px;">EUA</td></tr>
+    ${SN_INDICES.slice(6).map(linha).join('')}
+  </table>`;
+}
 function snUpdOportunidade(mesKey, codigo, val){
   const c = S.supernova[mesKey] && S.supernova[mesKey].clientes[codigo];
   if(!c) return;
@@ -8983,7 +9086,10 @@ function renderSupernovaDetalhe(mesKey, codigo){
     <div class="card">
       <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
         <div><h2>${esc(c.nome||c.codigo)}</h2><div class="desc" style="margin:0;">Código ${esc(c.codigo)} · mês ${snMesLabel(mesKey)}</div></div>
-        <button class="btn ghost" onclick="snFecharDetalhe()">← Voltar</button>
+        <div style="display:flex; gap:8px;">
+          <button class="btn solid" onclick="snEnterPresent('${mesKey}','${codigo}')">Modo Apresentação →</button>
+          <button class="btn ghost" onclick="snFecharDetalhe()">← Voltar</button>
+        </div>
       </div>
     </div>
 
@@ -8991,6 +9097,12 @@ function renderSupernovaDetalhe(mesKey, codigo){
       <div class="eyebrow">Panorama do mês</div>
       <div class="desc" style="margin-bottom:8px;">Comentário macro — compartilhado por todos os clientes desse mês. Cole aqui (Ctrl+V) quando montar o relatório.</div>
       <textarea class="sn-freetext" onblur="snUpdPanorama('${mesKey}', this.value)">${esc(bucket.panorama||'')}</textarea>
+    </div>
+
+    <div class="card">
+      <div class="eyebrow">Índices do mês</div>
+      <div class="desc" style="margin-bottom:8px;">Compartilhado no mês — preencha à mão (Mês/Ano em %).</div>
+      ${snRenderIndicesEditor(mesKey)}
     </div>
 
     <div class="card">
@@ -9040,6 +9152,86 @@ function renderSupernovaDetalhe(mesKey, codigo){
     </div>
   `;
 }
+
+// ---------------- Apresentação (slides) ----------------
+let snCurrentSlide = 0;
+const SN_TOTAL_SLIDES = 8;
+
+function snRenderIndicesSlide(mesKey){
+  const indices = (S.supernova[mesKey] && S.supernova[mesKey].indices) || snIndicesVazios();
+  const linha = ([chave, nome]) => {
+    const v = indices[chave] || {mes:0, ano:0};
+    return `<tr><td>${esc(nome)}</td><td class="num">${v.mes}%</td><td class="num">${v.ano}%</td></tr>`;
+  };
+  return `<table>
+    <tr><th>Índice</th><th class="num">Mês</th><th class="num">Ano</th></tr>
+    ${SN_INDICES.slice(0,6).map(linha).join('')}
+    <tr><td colspan="3" style="font-size:11px; opacity:.7; padding-top:10px;">EUA</td></tr>
+    ${SN_INDICES.slice(6).map(linha).join('')}
+  </table>`;
+}
+function snRenderConsolidadoSlide(c){
+  const total = snPatrimonioTotal(c);
+  const gXP = c.xp ? c.xp.ganhoMes||0 : 0;
+  const gMB = c.mb ? c.mb.ganhoMes||0 : 0;
+  const gXPG = c.xpGlobal ? c.xpGlobal.ganhoMes||0 : 0;
+  const pct = v => total>0 ? (v/total*100).toFixed(1) : '0';
+  return `<div class="grid c4" style="margin-top:10px;">
+      <div class="kpi dark"><div class="l">Patrimônio total</div><div class="v">${fmt(total)}</div></div>
+      <div class="kpi"><div class="l">XP</div><div class="v">${fmt(c.xp?c.xp.patrimonio:0)}</div><div class="s">${pct(c.xp?c.xp.patrimonio:0)}%</div></div>
+      <div class="kpi"><div class="l">MB</div><div class="v">${fmt(c.mb?c.mb.patrimonio:0)}</div><div class="s">${pct(c.mb?c.mb.patrimonio:0)}%</div></div>
+      <div class="kpi"><div class="l">XP Global</div><div class="v">${fmt(c.xpGlobal?c.xpGlobal.patrimonio:0)}</div><div class="s">${pct(c.xpGlobal?c.xpGlobal.patrimonio:0)}%</div></div>
+    </div>
+    <table style="margin-top:14px;">
+      <tr><th>Período</th><th class="num">Ganho XP</th><th class="num">Ganho MB</th><th class="num">Ganho XP Global</th><th class="num">Ganho total</th></tr>
+      <tr><td>Mês</td><td class="num">${fmt(gXP)}</td><td class="num">${fmt(gMB)}</td><td class="num">${fmt(gXPG)}</td><td class="num"><b>${fmt(gXP+gMB+gXPG)}</b></td></tr>
+    </table>`;
+}
+function snRenderNavDots(){
+  const el = document.getElementById('snNavDots'); if(!el) return;
+  el.innerHTML = '';
+  for(let i=0;i<SN_TOTAL_SLIDES;i++){
+    const dot = document.createElement('div');
+    dot.className = 'nav-dot'+(i===snCurrentSlide?' active':'');
+    dot.addEventListener('click', ()=>snGoToSlide(i));
+    el.appendChild(dot);
+  }
+}
+function snGoToSlide(n){
+  snCurrentSlide = Math.max(0, Math.min(SN_TOTAL_SLIDES-1, n));
+  document.querySelectorAll('#view-supernova #snPresentView .slide').forEach(s=>{
+    s.classList.toggle('active', Number(s.dataset.slide)===snCurrentSlide);
+  });
+  snRenderNavDots();
+}
+function snEnterPresent(mesKey, codigo){
+  const bucket = S.supernova[mesKey];
+  const c = bucket && bucket.clientes[codigo];
+  if(!c) return;
+  document.getElementById('snSlideNome').textContent = c.nome || c.codigo;
+  document.getElementById('snSlideCodigoMes').textContent = `Código ${c.codigo} · mês ${snMesLabel(mesKey)}`;
+  document.getElementById('snSlideData').textContent = new Date().toLocaleDateString('pt-BR',{day:'2-digit',month:'long',year:'numeric'});
+  document.getElementById('snSlidePanorama').textContent = bucket.panorama || 'Sem panorama registrado para este mês.';
+  document.getElementById('snSlideIndices').innerHTML = snRenderIndicesSlide(mesKey);
+  document.getElementById('snSlideConsolidado').innerHTML = snRenderConsolidadoSlide(c);
+  document.getElementById('snSlideAlocacao').innerHTML = snRenderAlocacao(c);
+  document.getElementById('snSlideBenchmark').innerHTML = snRenderBenchmark(c);
+  document.getElementById('snSlideDestaques').innerHTML = snRenderDestaques(c);
+  document.getElementById('snSlideOportunidade').textContent = c.oportunidade || 'Sem oportunidade registrada para este cliente.';
+  document.getElementById('snPresentView').style.display = 'flex';
+  snGoToSlide(0);
+}
+function snExitPresent(){
+  const el = document.getElementById('snPresentView');
+  if(el) el.style.display = 'none';
+}
+document.addEventListener('keydown', e=>{
+  const el = document.getElementById('snPresentView');
+  if(!el || el.style.display !== 'flex') return;
+  if(e.key==='ArrowRight') snGoToSlide(snCurrentSlide+1);
+  if(e.key==='ArrowLeft') snGoToSlide(snCurrentSlide-1);
+  if(e.key==='Escape') snExitPresent();
+});
 
 // ============================================================
 // MÊS / METAS / BACKUP
