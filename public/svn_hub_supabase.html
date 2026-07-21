@@ -5159,24 +5159,35 @@ async function sbUpsert(table, data){
 }
 
 // Estado do hub salvo no Supabase como registro único (id=1)
+// Compara com o timestamp local antes de aceitar o estado remoto: o Supabase grava com
+// debounce de 1s, então um reload logo após editar pode achar o Supabase desatualizado —
+// nesse caso o localStorage (que grava na hora) é a fonte mais confiável, e é reenviado
+// pro Supabase pra não perder a edição em outro dispositivo.
 async function load(){
-  // Tenta carregar do Supabase primeiro
+  let localState = null, localTs = 0;
+  try{
+    const raw = localStorage.getItem(LS_KEY);
+    if(raw) localState = JSON.parse(raw);
+    localTs = parseInt(localStorage.getItem(LS_KEY+'_ts')||'0', 10) || 0;
+  }catch(e){}
+  let precisaReenviar = false;
   try{
     const rows = await sbGet('hub_state', '?id=eq.1');
-    if(rows && rows.length && rows[0].state){
-      const p = JSON.parse(rows[0].state);
+    const remoto = rows && rows.length ? rows[0] : null;
+    const remotoTs = remoto && remoto.updated_at ? new Date(remoto.updated_at).getTime() : 0;
+    if(remoto && remoto.state && remotoTs >= localTs){
+      const p = JSON.parse(remoto.state);
       S = Object.assign(S, p);
-    } else {
-      // Fallback: tenta localStorage (dados antigos)
-      const raw = localStorage.getItem(LS_KEY);
-      if(raw){ const p = JSON.parse(raw); S = Object.assign(S, p); }
+    } else if(localState){
+      S = Object.assign(S, localState);
+      if(remoto) precisaReenviar = true; // local mais novo que o que tá no Supabase — sincroniza
+    } else if(remoto && remoto.state){
+      const p = JSON.parse(remoto.state);
+      S = Object.assign(S, p);
     }
   }catch(e){
     console.warn('Erro ao carregar do Supabase, usando localStorage', e);
-    try{
-      const raw = localStorage.getItem(LS_KEY);
-      if(raw){ const p = JSON.parse(raw); S = Object.assign(S, p); }
-    }catch(e2){}
+    if(localState) S = Object.assign(S, localState);
   }
   if(!S.supernova || typeof S.supernova !== 'object') S.supernova = {};
   if(!Array.isArray(S.r2decks)) S.r2decks = [];
@@ -5204,12 +5215,17 @@ async function load(){
     }
   });
   ensureMes(S.mesAtual);
+  if(precisaReenviar) save();
 }
 
 let _saveTimer = null;
 function save(){
-  // Salva no localStorage imediatamente (backup local)
-  try{ localStorage.setItem(LS_KEY, JSON.stringify(S)); }catch(e){}
+  // Salva no localStorage imediatamente (backup local), com timestamp pra load() saber
+  // se esse estado é mais novo que o que tá no Supabase.
+  try{
+    localStorage.setItem(LS_KEY, JSON.stringify(S));
+    localStorage.setItem(LS_KEY+'_ts', String(Date.now()));
+  }catch(e){}
   // Salva no Supabase com debounce de 1s para não sobrecarregar
   clearTimeout(_saveTimer);
   _saveTimer = setTimeout(async ()=>{
@@ -5219,6 +5235,22 @@ function save(){
   }, 1000);
   return true;
 }
+// Se trocar de aba / fechar antes do debounce disparar, força o envio na hora
+// (keepalive mantém a requisição viva mesmo com a página descarregando).
+function flushSaveImediato(){
+  if(_saveTimer==null) return;
+  clearTimeout(_saveTimer);
+  _saveTimer = null;
+  try{
+    fetch(`${SB_URL}/rest/v1/hub_state`, {
+      method: 'POST', keepalive: true,
+      headers: { 'apikey': SB_KEY, 'Content-Type': 'application/json', 'Prefer': 'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify({ id: 1, state: JSON.stringify(S), updated_at: new Date().toISOString() })
+    });
+  }catch(e){}
+}
+document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='hidden') flushSaveImediato(); });
+window.addEventListener('pagehide', flushSaveImediato);
 
 // ============================================================
 // HELPERS
