@@ -221,21 +221,27 @@ th.num{text-align:right;}
 #view-supernova #snPresentView .sn-pano-slide-item{border-bottom:1px solid var(--line);}
 /* Apresentação: conteúdo maior e centralizado */
 #view-supernova #snPresentView .slide > div[id^="snSlide"]{width:100%; max-width:1080px; margin:26px auto 0;}
-#view-supernova #snPresentView #snSlideConsolidado .kpi .v{font-size:27px;}
-#view-supernova #snPresentView #snSlideConsolidado table,
-#view-supernova #snPresentView #snSlideIndices table{font-size:15px;}
-#view-supernova #snPresentView #snSlideIndices{max-width:620px;}
+#view-supernova #snPresentView #snSlideConsolidado{max-width:1240px;}
+#view-supernova #snPresentView #snSlideConsolidado .kpi{padding:22px 26px;}
+#view-supernova #snPresentView #snSlideConsolidado .kpi .l{font-size:12.5px;}
+#view-supernova #snPresentView #snSlideConsolidado .kpi .v{font-size:36px;}
+#view-supernova #snPresentView #snSlideConsolidado .kpi .s{font-size:15px;}
+#view-supernova #snPresentView #snSlideConsolidado table{font-size:18px; margin-top:26px;}
+#view-supernova #snPresentView #snSlideConsolidado table th,
+#view-supernova #snPresentView #snSlideConsolidado table td{padding:11px 10px;}
+#view-supernova #snPresentView #snSlideIndices table{font-size:17px;}
+#view-supernova #snPresentView #snSlideIndices table th,
+#view-supernova #snPresentView #snSlideIndices table td{padding:9px 10px;}
+#view-supernova #snPresentView #snSlideIndices{max-width:680px;}
 #view-supernova #snPresentView #snSlideAlocacao{display:flex; justify-content:center;}
 #view-supernova #snPresentView #snSlideAlocacao > div{transform:scale(1.7); transform-origin:top center; margin-top:34px;}
 #view-supernova #snPresentView #snSlideBenchmark{max-width:860px;}
 #view-supernova #snPresentView #snSlideBenchmark .sn-bench-track{height:20px;}
 #view-supernova #snPresentView #snSlideBenchmark .sn-bench-label{width:120px; font-size:14px;}
 #view-supernova #snPresentView #snSlideBenchmark .sn-bench-val{font-size:14px; width:78px;}
-/* Modo apresentação limpo: some com os controles de edição; reaparecem ao passar o mouse no topo */
-#view-supernova #snPresentView.sn-presenting .sn-present-modes,
-#view-supernova #snPresentView.sn-presenting .exit-present{opacity:0; pointer-events:none; transition:opacity .2s ease;}
-#view-supernova #snPresentView.sn-presenting:hover .sn-present-modes,
-#view-supernova #snPresentView.sn-presenting:hover .exit-present{opacity:1; pointer-events:auto;}
+/* Modo apresentação limpo: Editar/Apresentar/Slides somem de vez; só o Sair continua (canto). */
+#view-supernova #snPresentView.sn-presenting .sn-present-modes{display:none;}
+#view-supernova #snPresentView.sn-presenting .sn-slide-picker{display:none !important;}
 /* Seletor de slides */
 #view-supernova #snPresentView .sn-present-modes{align-items:center;}
 #view-supernova #snPresentView .sn-slide-picker{position:absolute; top:60px; left:30px; z-index:6; background:var(--charcoal); border:1px solid var(--line-dark); border-radius:12px; padding:12px 14px; min-width:220px; box-shadow:0 10px 30px rgba(0,0,0,.4);}
