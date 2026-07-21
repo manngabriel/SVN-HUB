@@ -8315,9 +8315,18 @@ function scDetectIndexador(texto){
   return 'Não informado';
 }
 function scParseMoney(v){
-  // Tira qualquer símbolo de moeda/seta (R$, US$, U$, $, ↑↓ etc.) — só sobra número pt-BR.
-  let s = String(v).replace(/[^\d.,\-]/g,'').trim().replace(/\./g,'').replace(',','.');
-  return parseFloat(s);
+  // Tira símbolo de moeda/seta (R$, US$, $, ↑↓...) — sobra só número. Detecta o separador
+  // decimal em vez de assumir vírgula: o OCR às vezes lê "2.846,10" como "2.846.10". Regra:
+  // o último separador seguido de 1-2 dígitos no fim é o decimal; o resto são milhares.
+  let s = String(v).replace(/[^\d.,\-]/g,'').trim();
+  if(!s) return NaN;
+  const m = s.match(/[.,](\d{1,2})$/);
+  if(m){
+    const dec = m[1];
+    const intPart = s.slice(0, s.length - dec.length - 1).replace(/[.,]/g,'');
+    return parseFloat((intPart||'0') + '.' + dec);
+  }
+  return parseFloat(s.replace(/[.,]/g,''));
 }
 // Valor monetário: exige "R$" para não confundir com quantidade/percentual. Aceita com ou sem centavos.
 const SC_MONEY_RE = /R\$\s?-?\d[\d.]*(?:,\d{2})?/;
@@ -9313,51 +9322,69 @@ document.getElementById('snPasteZone').addEventListener('paste', function(e){
 // Heurística: o maior valor em R$ da tela costuma ser o patrimônio total (maior que qualquer
 // ganho isolado do período); os R$ seguintes, na ordem em que aparecem, viram os palpites de
 // ganho no mês e no ano.
-// Print "Mutual Funds" da XP Global. Estrutura por linha de fundo:
-//   TICKER / Nome do fundo | QTD | Preço atual | Preço médio | Valor aplicado | Rent.% | Rent.US$ | Posição | Ações
-// O valor que interessa é a POSIÇÃO (valor de mercado atual) = ÚLTIMO US$ da linha, não o 1º
-// (que é Preço atual). Rent. do mês = o percentual da linha. O header "Mutual Funds ... US$ total"
-// e o cabeçalho de colunas são ignorados. Nome pode vir quebrado em linhas antes dos valores
-// (ticker numa linha, nome do fundo noutra) — acumula num buffer até a linha de valores.
+// Parser do print "Investimentos internacionais" da XP Global (categorias Mutual Funds, Cash,
+// UCITS ETFs, Bonds, Equities...). A tabela é larga: o OCR quase sempre quebra a linha de cada
+// fundo em VÁRIAS linhas (um valor por linha), então não dá pra contar "US$ por linha". Parser por
+// BLOCO: uma linha de nome (ticker/fundo) abre um bloco; as linhas de valor US$ seguintes entram
+// no bloco; uma linha de CATEGORIA (Mutual Funds, Cash, Bonds...) ou o próximo nome fecham o bloco.
+// Valor do fundo = maior US$ do bloco (≈ Posição / valor de mercado). QTD e Rent.(US$) não têm
+// cifrão, então são ignorados por não terem marcador de moeda.
 async function snExtrairXpGlobal(imagemB64){
   if(typeof Tesseract==='undefined'){ console.warn('Tesseract.js não carregou'); return null; }
   try{
     const resultado = await Tesseract.recognize(imagemB64, 'por');
     const text = resultado.data.text || '';
     const linhas = text.split('\n').map(l=>l.trim()).filter(Boolean);
-    const curG = /(?:US?\$|U\$|R\$)\s?-?[\d.,]+/g;   // todas as ocorrências US$/R$ da linha
-    const pctRe = /-?[\d.,]+\s?%/;
-    const ehCabecalho = l => /mutual funds|fundos|^ativo\b|qtd|pre[çc]o|valor aplicado|rent\.|posi[çc][ãa]o|a[çc][õo]es/i.test(l);
-    const ativos = [];
-    let nomeBuf = '';
+    const CATS = /^(?:[\d.,]+%?\s*)?(mutual funds|fundos|cash|saldo|ucits|etfs?|structured notes|notas estruturadas|certificate of deposit|cd\b|certificado de dep|treasury|tesouro|bonds|renda fixa|equities|renda vari)/i;
+    const HEADER = /^(ativo|qtd|pre[çc]o|valor aplicado|rent\.?|posi[çc][ãa]o|a[çc][õo]es)\b/i;
+    const MOEDA = /(?:US?\$|U\$|R\$|USS|\bUS\b|\$)/i;   // marcador de moeda (tolera OCR do cifrão)
+    const PCT = /-?[\d.,]+\s?%/;
+    const curTokG = /(?:US?\$|U\$|R\$|USS|\$)\s?-?[\d.,]+/gi;
+    const funds = [];
+    let atual = null;   // {nome, valores:[], pct}
+    const fechar = () => {
+      if(atual && atual.nome){
+        const v = atual.valores.length ? Math.max(...atual.valores) : 0;
+        if(v>0) funds.push({ nome: atual.nome.replace(/\s+/g,' ').trim(), valorUSD:v, rentabMes: atual.pct||0 });
+      }
+      atual = null;
+    };
     linhas.forEach(l=>{
-      if(/mutual funds/i.test(l)) { nomeBuf=''; return; }      // header do card (tem o US$ total) — pula
-      const curTokens = l.match(curG) || [];
-      if(curTokens.length === 0){
-        // Linha só de texto = ticker/nome do fundo. Guarda se não for cabeçalho de tabela.
-        const soTexto = l.replace(pctRe,'').replace(/[\d.,%↑↓+\-|·•$()]/g,'').trim();
-        if(soTexto.length>=2 && !ehCabecalho(l)) nomeBuf = (nomeBuf?nomeBuf+' ':'')+l;
+      if(HEADER.test(l)) return;
+      if(CATS.test(l)){ fechar(); return; }              // seção — fecha fundo anterior; não é fundo
+      const temVal = MOEDA.test(l) && /\d/.test(l);
+      const ehPct = PCT.test(l) && !MOEDA.test(l);
+      const temLetra = /[A-Za-zÀ-ÿ]{2,}/.test(l);
+      // Linha de nome/ticker (texto, sem valor monetário): abre ou continua um bloco.
+      if(temLetra && !temVal && !ehPct){
+        if(atual && !atual.valores.length) atual.nome = (atual.nome + ' ' + l).trim();
+        else { fechar(); atual = {nome:l, valores:[], pct:0}; }
         return;
       }
-      if(curTokens.length < 2){ nomeBuf=''; return; }   // 1 US$ = linha de categoria (Cash, ETFs...) — ignora
-      // Linha de fundo: >=2 US$ (a real tem 4: preço atual, médio, aplicado, posição).
-      // Valor = maior US$ da linha ≈ Posição (valor de mercado); robusto à ordem que o OCR devolve.
-      const valores = curTokens.map(t=>scParseMoney(t)).filter(v=>v>0);
-      const valorUSD = valores.length ? Math.max(...valores) : 0;
-      if(!(valorUSD>0)){ nomeBuf=''; return; }
-      const pctM = l.match(pctRe);
-      const nomeLinha = l.slice(0, l.search(/\d/)).replace(/[|·•]/g,' ').trim();
-      let nome = ((nomeBuf?nomeBuf+' ':'')+nomeLinha).replace(/\b(US?\$|U\$|R\$)\b/g,'').replace(/\s+/g,' ').trim();
-      if(nome.length<2) nome = 'Fundo';
-      ativos.push({ nome, valorUSD, rentabMes: pctM ? snParsePercent(pctM[0]) : 0 });
-      nomeBuf = '';
+      // Linha de valor(es) monetário(s): entra no bloco aberto.
+      if(temVal){
+        // se a linha começa com texto (row inteira numa linha só), esse texto é o nome do fundo.
+        // Remove marcador de moeda do começo pra "US$ 144,70" não virar um fundo chamado "US$".
+        const leadClean = l.slice(0, l.search(/\d/)).replace(/US?\$|U\$|R\$|USS|\$/gi,'').replace(/[|·•]/g,' ').trim();
+        if(leadClean.length>=2 && /[A-Za-zÀ-ÿ]{2,}/.test(leadClean) && !CATS.test(leadClean) && !HEADER.test(leadClean)){
+          if(!(atual && !atual.valores.length)){ fechar(); atual = {nome:leadClean, valores:[], pct:0}; }
+        }
+        if(!atual){ return; }
+        const pm = l.match(PCT); if(pm && !atual.pct) atual.pct = snParsePercent(pm[0]);
+        const toks = l.match(curTokG) || [];   // só tokens COM cifrão (exclui QTD e Rent.US$ sem $)
+        toks.forEach(t=>{ const n = scParseMoney(t); if(n>0 && n<1e9) atual.valores.push(n); });
+        return;
+      }
+      // Linha só de porcentagem
+      if(ehPct && atual && !atual.pct) atual.pct = snParsePercent(l.match(PCT)[0]);
     });
-    if(!ativos.length){
-      // Fallback: nenhum fundo reconhecido — usa o maior US$ da tela como total, pra revisar na ficha.
-      const anyTokens = [...text.matchAll(curG)].map(m=>scParseMoney(m[0])).filter(v=>v>0);
-      if(anyTokens.length){ ativos.push({ nome:'Carteira XP Global (revisar nome)', valorUSD: Math.max(...anyTokens), rentabMes:0 }); }
+    fechar();
+    if(!funds.length){
+      // Fallback: nada reconhecido — maior US$ da tela como total, pra revisar na ficha.
+      const any = [...text.matchAll(curTokG)].map(m=>scParseMoney(m[0])).filter(v=>v>0);
+      if(any.length) funds.push({ nome:'Carteira XP Global (revisar nome)', valorUSD: Math.max(...any), rentabMes:0 });
     }
-    return ativos.length ? { ativos, ganhoMes:0, ganhoAno:0 } : null;
+    return funds.length ? { ativos: funds, ganhoMes:0, ganhoAno:0 } : null;
   }catch(e){ console.warn('OCR do print da XP Global falhou', e); return null; }
 }
 function snAbrirModalXpGlobal(mesKey, imagemB64, extraido){
