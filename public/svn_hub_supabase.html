@@ -8767,6 +8767,16 @@ function snFecharDetalhe(){
   snClienteSelecionado = null;
   renderSupernova();
 }
+function snExcluirCliente(mesKey, codigo, event){
+  if(event) event.stopPropagation();
+  const bucket = S.supernova[mesKey];
+  const c = bucket && bucket.clientes[codigo];
+  if(!c) return;
+  if(!confirm(`Excluir o consolidado de "${c.nome||codigo}" em ${snMesLabel(mesKey)}? Isso apaga XP, MB, XP Global e oportunidade importados pra ele nesse mês. Não dá pra desfazer.`)) return;
+  delete bucket.clientes[codigo];
+  if(snClienteSelecionado===codigo) snClienteSelecionado = null;
+  save(); renderSupernova();
+}
 function snSetStatus(msg, isError){
   const el = document.getElementById('snImportStatus');
   if(!el) return;
@@ -8828,7 +8838,8 @@ function renderSupernovaLista(){
     return;
   }
   el.innerHTML = '<div class="grid c3">' + clientes.map(c=>`
-    <div class="sn-client-card" onclick="snAbrirCliente('${snMesSelecionado}','${c.codigo}')">
+    <div class="sn-client-card" onclick="snAbrirCliente('${snMesSelecionado}','${c.codigo}')" style="position:relative;">
+      <button class="btn danger" style="position:absolute; top:8px; right:8px;" onclick="snExcluirCliente('${snMesSelecionado}','${c.codigo}', event)" title="Excluir consolidado deste cliente neste mês">🗑</button>
       <div class="t">${esc(c.nome||c.codigo)}</div>
       <div class="badges"><span>Cód. ${esc(c.codigo)}</span>${c.xp?'<span>XP</span>':''}${c.mb?'<span>MB</span>':''}${c.xpGlobal?'<span>XP Global</span>':''}</div>
       <div style="font-family:'Fraunces',serif; font-size:18px; margin-top:4px;">${fmt(snPatrimonioTotal(c))}</div>
@@ -9363,6 +9374,7 @@ function renderSupernovaDetalhe(mesKey, codigo){
         <div style="display:flex; gap:8px;">
           <button class="btn solid" onclick="snEnterPresent('${mesKey}','${codigo}')">Modo Apresentação →</button>
           <button class="btn ghost" onclick="snFecharDetalhe()">← Voltar</button>
+          <button class="btn danger" onclick="snExcluirCliente('${mesKey}','${codigo}')" title="Excluir consolidado deste cliente neste mês">🗑 Excluir</button>
         </div>
       </div>
     </div>
