@@ -6142,7 +6142,8 @@ function detalheClienteHTML(c, pos, ativos){
   return h;
 }
 // Pizza de composição por classe — espelha o donut do Simulador de Carteira (mesmas cores)
-function composicaoDonutHTML(porClasse, total){
+function composicaoDonutHTML(porClasse, total, colorMap){
+  const cores = colorMap || scClassColors;
   const size=130, stroke=18, r=(size-stroke)/2, c=2*Math.PI*r, cx=size/2, cy=size/2;
   const compact = v => { v=+v||0; if(v>=1e6) return 'R$ '+(v/1e6).toLocaleString('pt-BR',{maximumFractionDigits:1})+' mi'; if(v>=1e3) return 'R$ '+(v/1e3).toLocaleString('pt-BR',{maximumFractionDigits:0})+' mil'; return 'R$ '+v.toLocaleString('pt-BR',{maximumFractionDigits:0}); };
   const entries = Object.entries(porClasse).filter(([,v])=>v>0.001).sort((a,b)=>b[1]-a[1]);
@@ -6151,7 +6152,7 @@ function composicaoDonutHTML(porClasse, total){
   let offset=0;
   entries.forEach(([classe,val])=>{
     const len=(total>0?val/total:0)*c;
-    const color=scClassColors[classe]||'#a39a8f';
+    const color=cores[classe]||'#a39a8f';
     svg += `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${color}" stroke-width="${stroke}" stroke-dasharray="${len} ${c-len}" stroke-dashoffset="${-offset}"/>`;
     offset+=len;
   });
@@ -6159,7 +6160,7 @@ function composicaoDonutHTML(porClasse, total){
   svg += `<div style="flex:1;min-width:180px;">`;
   entries.forEach(([classe,val])=>{
     const pct = total>0?(val/total*100):0;
-    svg += `<div style="display:flex;align-items:center;gap:8px;font-size:12px;padding:2px 0;"><span style="width:11px;height:11px;border-radius:3px;flex:none;background:${scClassColors[classe]||'#a39a8f'}"></span><span style="flex:1;">${classe}</span><span style="font-weight:600;">${scFmtPct(pct)}</span></div>`;
+    svg += `<div style="display:flex;align-items:center;gap:8px;font-size:12px;padding:2px 0;"><span style="width:11px;height:11px;border-radius:3px;flex:none;background:${cores[classe]||'#a39a8f'}"></span><span style="flex:1;">${classe}</span><span style="font-weight:600;">${scFmtPct(pct)}</span></div>`;
   });
   svg += `</div></div>`;
   return svg;
@@ -8680,6 +8681,18 @@ scRenderNavDots();
 // ============================================================
 const MES_PT = {janeiro:1,fevereiro:2,'março':3,marco:3,abril:4,maio:5,junho:6,julho:7,agosto:8,setembro:9,outubro:10,novembro:11,dezembro:12};
 const SN_ESTRATEGIAS = ['Pós Fixado','Inflação','Pré Fixado','Caixa','Proventos'];
+// Cores por classe/estratégia da Alocação consolidada (donut). As classes da Supernova não
+// batem com scClassColors (Renda Fixa etc.), então caíam todas no cinza default — mapa próprio.
+const SN_CLASS_COLORS = {
+  'Pós Fixado':'#221E1D', 'Inflação':'#BE7F49', 'Pré Fixado':'#5F7A52',
+  'Caixa':'#D8CBBB', 'Proventos':'#4f7a76', 'Outros':'#a39a8f'
+};
+// % do CDI de uma rentabilidade, usando o CDI do painel (panorama) daquele mês como base.
+function snPctCDI(rent, cdiRef){ return (cdiRef>0) ? (rent/cdiRef*100) : null; }
+function snCdiDoMes(mesKey, campo){
+  const idx = S.supernova[mesKey] && S.supernova[mesKey].indices && S.supernova[mesKey].indices.cdi;
+  return idx ? (+idx[campo]||0) : 0;
+}
 const SN_INDICES = [
   ['ibovespa','Ibovespa'], ['cdi','CDI'], ['dolar','Dólar'], ['ifix','IFIX'], ['ihfa','IHFA'], ['ipca15','IPCA-15'],
   ['sp500','S&P 500'], ['nasdaq','Nasdaq'], ['dowjones','Dow Jones'],
@@ -8787,12 +8800,17 @@ function snRentabilidadeConsolidada(c){
     return {label:p.label, gXP:p.gXP, gMB:p.gMB, ganhoTotal, rentab: baseTotal>0 ? ganhoTotal/baseTotal*100 : 0};
   });
 }
-function snRenderTabelaRentabilidade(c){
+function snRenderTabelaRentabilidade(c, mesKey){
   const linhas = snRentabilidadeConsolidada(c);
   if(!linhas) return '<div class="empty">Sem dados de XP ou MB pra calcular rentabilidade consolidada ainda.</div>';
+  const cdiPorLabel = { 'Mês': snCdiDoMes(mesKey,'mes'), 'No Ano': snCdiDoMes(mesKey,'ano') };
+  const cdiCell = l => {
+    const pc = snPctCDI(l.rentab, cdiPorLabel[l.label]||0);
+    return pc!=null ? `<b>${pc.toFixed(0)}%</b>` : '—';
+  };
   return `<table style="margin-top:14px;">
-    <tr><th>Período</th><th class="num">Ganho XP</th><th class="num">Ganho MB</th><th class="num">Ganho total</th><th class="num">Rentab. consolidada</th></tr>
-    ${linhas.map(l=>`<tr><td>${esc(l.label)}</td><td class="num">${fmt(l.gXP)}</td><td class="num">${fmt(l.gMB)}</td><td class="num"><b>${fmt(l.ganhoTotal)}</b></td><td class="num"><b>${l.rentab>=0?'+':''}${l.rentab.toFixed(2)}%</b></td></tr>`).join('')}
+    <tr><th>Período</th><th class="num">Ganho XP</th><th class="num">Ganho MB</th><th class="num">Ganho total</th><th class="num">Rentab. consolidada</th><th class="num">% do CDI</th></tr>
+    ${linhas.map(l=>`<tr><td>${esc(l.label)}</td><td class="num">${fmt(l.gXP)}</td><td class="num">${fmt(l.gMB)}</td><td class="num"><b>${fmt(l.ganhoTotal)}</b></td><td class="num"><b>${l.rentab>=0?'+':''}${l.rentab.toFixed(2)}%</b></td><td class="num" style="color:var(--amber);">${cdiCell(l)}</td></tr>`).join('')}
   </table>
   <div class="desc" style="margin-top:8px; font-size:11px;">Rentabilidade consolidada = ganho financeiro somado ÷ patrimônio-base combinado no início do período (saldo inicial real da MB; pra XP, estimado como patrimônio atual menos o ganho do período). Aporte/resgate relevante no período distorce o percentual — o ganho em R$ continua confiável.</div>`;
 }
@@ -9258,6 +9276,20 @@ document.getElementById('snPasteZone').addEventListener('paste', function(e){
     const imagemB64 = r.result;
     snSetStatus('Lendo o print (OCR)...', false);
     const extraido = await snExtrairXpGlobal(imagemB64);
+    // Se já tem uma ficha de cliente aberta, o print é desse cliente: anexa direto, sem abrir outro.
+    const bucket = S.supernova[mesKey] && S.supernova[mesKey].clientes;
+    if(snClienteSelecionado && bucket && bucket[snClienteSelecionado]){
+      const alvo = bucket[snClienteSelecionado];
+      snIngest(mesKey, snClienteSelecionado, alvo.nome, 'xpGlobal', {
+        imagemB64,
+        patrimonio: extraido ? extraido.patrimonio : 0,
+        ganhoMes: extraido ? extraido.ganhoMes : 0,
+        ganhoAno: extraido ? extraido.ganhoAno : 0
+      });
+      snAbrirCliente(mesKey, snClienteSelecionado);
+      snSetStatus(`XP Global anexado a ${alvo.nome||snClienteSelecionado}.`+(extraido?' Confira os valores na ficha.':' OCR não leu — preencha na ficha.'), !extraido);
+      return;
+    }
     snSetStatus(extraido ? 'Print lido — confira os valores antes de salvar.' : 'Não consegui ler os valores automaticamente — preencha à mão.', !extraido);
     snAbrirModalXpGlobal(mesKey, imagemB64, extraido);
   };
@@ -9356,9 +9388,9 @@ function snRenderAlocacao(c){
     porClasse['Outros'] = (porClasse['Outros']||0) + c.xpGlobal.patrimonio;
   }
   const total = Object.values(porClasse).reduce((a,v)=>a+v,0);
-  return total>0 ? composicaoDonutHTML(porClasse, total) : '<div class="empty">Sem dados de alocação ainda.</div>';
+  return total>0 ? composicaoDonutHTML(porClasse, total, SN_CLASS_COLORS) : '<div class="empty">Sem dados de alocação ainda.</div>';
 }
-function snRenderDestaques(c){
+function snRenderDestaques(c, cdiMes){
   const todos = [
     ...((c.xp && c.xp.ativos)||[]).map(a=>({...a, origem:'XP'})),
     ...((c.mb && c.mb.ativos)||[]).map(a=>({...a, origem:'MB'}))
@@ -9366,10 +9398,14 @@ function snRenderDestaques(c){
   if(!todos.length) return '<div class="empty">Sem posição detalhada extraída ainda.</div>';
   const ord = [...todos].sort((a,b)=>b.rentabMes-a.rentabMes);
   const positivos = ord.slice(0,5), negativos = ord.slice(-5).reverse();
-  const item = a => `<div style="display:flex; justify-content:space-between; padding:8px 0; border-bottom:1px solid var(--line);">
+  const item = a => {
+    const pc = snPctCDI(a.rentabMes, cdiMes||0);
+    const cdiTxt = pc!=null ? `<div style="font-size:11px; color:var(--amber); font-weight:600;">${pc.toFixed(0)}% do CDI</div>` : '';
+    return `<div style="display:flex; justify-content:space-between; padding:8px 0; border-bottom:1px solid var(--line);">
     <div><b>${esc(a.nome)}</b><div style="font-size:11px; color:var(--ink-soft);">${a.origem}${a.estrategia?' · '+esc(a.estrategia):''}</div></div>
-    <div style="font-weight:700; color:${a.rentabMes>=0?'var(--ok)':'var(--warn)'};">${a.rentabMes>=0?'+':''}${a.rentabMes.toFixed(2)}%</div>
+    <div style="text-align:right;"><div style="font-weight:700; color:${a.rentabMes>=0?'var(--ok)':'var(--warn)'};">${a.rentabMes>=0?'+':''}${a.rentabMes.toFixed(2)}%</div>${cdiTxt}</div>
   </div>`;
+  };
   return `<div class="grid c2">
     <div><div style="font-weight:700; color:var(--ok); font-size:11px; letter-spacing:.05em; margin-bottom:6px;">POSITIVOS</div>${positivos.map(item).join('')}</div>
     <div><div style="font-weight:700; color:var(--warn); font-size:11px; letter-spacing:.05em; margin-bottom:6px;">MENORES RETORNOS</div>${negativos.map(item).join('')}</div>
@@ -9510,11 +9546,11 @@ function renderSupernovaDetalhe(mesKey, codigo){
       <div class="eyebrow">Visão consolidada</div>
       <div class="grid c4" style="margin-top:10px;">
         <div class="kpi dark"><div class="l">Patrimônio total</div><div class="v">${fmt(total)}</div></div>
-        <div class="kpi"><div class="l">XP</div><div class="v">${fmt(c.xp?c.xp.patrimonio:0)}</div><div class="s">${pct(c.xp?c.xp.patrimonio:0)}%</div></div>
-        <div class="kpi"><div class="l">MB</div><div class="v">${fmt(c.mb?c.mb.patrimonio:0)}</div><div class="s">${pct(c.mb?c.mb.patrimonio:0)}%</div></div>
-        <div class="kpi"><div class="l">XP Global</div><div class="v">${fmt(c.xpGlobal?c.xpGlobal.patrimonio:0)}</div><div class="s">${pct(c.xpGlobal?c.xpGlobal.patrimonio:0)}%</div></div>
+        ${c.xp ? `<div class="kpi"><div class="l">XP</div><div class="v">${fmt(c.xp.patrimonio)}</div><div class="s">${pct(c.xp.patrimonio)}%</div></div>` : ''}
+        ${c.mb ? `<div class="kpi"><div class="l">MB</div><div class="v">${fmt(c.mb.patrimonio)}</div><div class="s">${pct(c.mb.patrimonio)}%</div></div>` : ''}
+        ${c.xpGlobal ? `<div class="kpi"><div class="l">XP Global</div><div class="v">${fmt(c.xpGlobal.patrimonio)}</div><div class="s">${pct(c.xpGlobal.patrimonio)}%</div></div>` : ''}
       </div>
-      ${snRenderTabelaRentabilidade(c)}
+      ${snRenderTabelaRentabilidade(c, mesKey)}
     </div>
 
     <div class="card">
@@ -9529,19 +9565,19 @@ function renderSupernovaDetalhe(mesKey, codigo){
 
     <div class="card">
       <div class="eyebrow">Destaques do mês</div>
-      <div style="margin-top:10px;">${snRenderDestaques(c)}</div>
+      <div style="margin-top:10px;">${snRenderDestaques(c, snCdiDoMes(mesKey,'mes'))}</div>
     </div>
 
+    ${c.xpGlobal ? `
     <div class="card">
       <div class="eyebrow">XP Global</div>
-      ${c.xpGlobal ? `
-        <img src="${c.xpGlobal.imagemB64}" style="max-width:340px; border-radius:10px; margin:10px 0; display:block;">
-        <div class="grid c3">
-          <div class="field"><label>Patrimônio</label><input type="number" value="${c.xpGlobal.patrimonio||0}" onchange="snUpdXpGlobalCampo('${mesKey}','${codigo}','patrimonio',this.value)"></div>
-          <div class="field"><label>Ganho mês</label><input type="number" value="${c.xpGlobal.ganhoMes||0}" onchange="snUpdXpGlobalCampo('${mesKey}','${codigo}','ganhoMes',this.value)"></div>
-          <div class="field"><label>Ganho no ano</label><input type="number" value="${c.xpGlobal.ganhoAno||0}" onchange="snUpdXpGlobalCampo('${mesKey}','${codigo}','ganhoAno',this.value)"></div>
-        </div>` : '<div class="empty">Nenhum print colado ainda para este cliente.</div>'}
-    </div>
+      <img src="${c.xpGlobal.imagemB64}" style="max-width:340px; border-radius:10px; margin:10px 0; display:block;">
+      <div class="grid c3">
+        <div class="field"><label>Patrimônio</label><input type="number" value="${c.xpGlobal.patrimonio||0}" onchange="snUpdXpGlobalCampo('${mesKey}','${codigo}','patrimonio',this.value)"></div>
+        <div class="field"><label>Ganho mês</label><input type="number" value="${c.xpGlobal.ganhoMes||0}" onchange="snUpdXpGlobalCampo('${mesKey}','${codigo}','ganhoMes',this.value)"></div>
+        <div class="field"><label>Ganho no ano</label><input type="number" value="${c.xpGlobal.ganhoAno||0}" onchange="snUpdXpGlobalCampo('${mesKey}','${codigo}','ganhoAno',this.value)"></div>
+      </div>
+    </div>` : ''}
 
     <div class="card">
       <div class="eyebrow">Oportunidade</div>
@@ -9568,16 +9604,16 @@ function snRenderIndicesSlide(mesKey){
     ${SN_INDICES.slice(6).map(linha).join('')}
   </table>`;
 }
-function snRenderConsolidadoSlide(c){
+function snRenderConsolidadoSlide(c, mesKey){
   const total = snPatrimonioTotal(c);
   const pct = v => total>0 ? (v/total*100).toFixed(1) : '0';
   return `<div class="grid c4" style="margin-top:10px;">
       <div class="kpi dark"><div class="l">Patrimônio total</div><div class="v">${fmt(total)}</div></div>
-      <div class="kpi"><div class="l">XP</div><div class="v">${fmt(c.xp?c.xp.patrimonio:0)}</div><div class="s">${pct(c.xp?c.xp.patrimonio:0)}%</div></div>
-      <div class="kpi"><div class="l">MB</div><div class="v">${fmt(c.mb?c.mb.patrimonio:0)}</div><div class="s">${pct(c.mb?c.mb.patrimonio:0)}%</div></div>
-      <div class="kpi"><div class="l">XP Global</div><div class="v">${fmt(c.xpGlobal?c.xpGlobal.patrimonio:0)}</div><div class="s">${pct(c.xpGlobal?c.xpGlobal.patrimonio:0)}%</div></div>
+      ${c.xp ? `<div class="kpi"><div class="l">XP</div><div class="v">${fmt(c.xp.patrimonio)}</div><div class="s">${pct(c.xp.patrimonio)}%</div></div>` : ''}
+      ${c.mb ? `<div class="kpi"><div class="l">MB</div><div class="v">${fmt(c.mb.patrimonio)}</div><div class="s">${pct(c.mb.patrimonio)}%</div></div>` : ''}
+      ${c.xpGlobal ? `<div class="kpi"><div class="l">XP Global</div><div class="v">${fmt(c.xpGlobal.patrimonio)}</div><div class="s">${pct(c.xpGlobal.patrimonio)}%</div></div>` : ''}
     </div>
-    ${snRenderTabelaRentabilidade(c)}`;
+    ${snRenderTabelaRentabilidade(c, mesKey)}`;
 }
 function snRenderNavDots(){
   const el = document.getElementById('snNavDots'); if(!el) return;
@@ -9639,10 +9675,10 @@ function snEnterPresent(mesKey, codigo){
   document.getElementById('snSlideData').textContent = new Date().toLocaleDateString('pt-BR',{day:'2-digit',month:'long',year:'numeric'});
   document.getElementById('snSlidePanorama').innerHTML = snRenderPanoramaSlide(mesKey);
   document.getElementById('snSlideIndices').innerHTML = snRenderIndicesSlide(mesKey);
-  document.getElementById('snSlideConsolidado').innerHTML = snRenderConsolidadoSlide(c);
+  document.getElementById('snSlideConsolidado').innerHTML = snRenderConsolidadoSlide(c, mesKey);
   document.getElementById('snSlideAlocacao').innerHTML = snRenderAlocacao(c);
   document.getElementById('snSlideBenchmark').innerHTML = snRenderBenchmark(c);
-  document.getElementById('snSlideDestaques').innerHTML = snRenderDestaques(c);
+  document.getElementById('snSlideDestaques').innerHTML = snRenderDestaques(c, snCdiDoMes(mesKey,'mes'));
   document.getElementById('snSlideOportunidade').innerHTML = snRenderOportunidadeSlide(mesKey, codigo);
   view.style.display = 'flex';
   snApplyPresentMode('edit');
