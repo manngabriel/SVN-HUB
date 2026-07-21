@@ -9291,15 +9291,14 @@ document.getElementById('snPasteZone').addEventListener('paste', function(e){
     const bucket = S.supernova[mesKey] && S.supernova[mesKey].clientes;
     if(snClienteSelecionado && bucket && bucket[snClienteSelecionado]){
       const alvo = bucket[snClienteSelecionado];
+      const cambio = (alvo.xpGlobal && alvo.xpGlobal.cambio) || await snFetchUSDBRL();
       snIngest(mesKey, snClienteSelecionado, alvo.nome, 'xpGlobal', {
-        imagemB64,
-        cambio: (alvo.xpGlobal && alvo.xpGlobal.cambio) || 0,
-        ativos: (extraido && extraido.ativos) ? extraido.ativos : [],
-        ganhoMes: extraido ? (extraido.ganhoMes||0) : 0,
-        ganhoAno: extraido ? (extraido.ganhoAno||0) : 0
+        cambio,
+        ativos: (extraido && extraido.ativos) ? extraido.ativos : []
       });
       snAbrirCliente(mesKey, snClienteSelecionado);
-      snSetStatus(`XP Global anexado a ${alvo.nome||snClienteSelecionado}.`+(extraido?' Confira os valores na ficha.':' OCR não leu — preencha na ficha.'), !extraido);
+      const nFundos = (extraido && extraido.ativos) ? extraido.ativos.length : 0;
+      snSetStatus(`XP Global: ${nFundos} fundo(s) lido(s)`+(cambio?` · câmbio ${cambio}.`:' · câmbio não obtido, clique ↻ na ficha.'), !nFundos);
       return;
     }
     snSetStatus(extraido ? 'Print lido — confira os valores antes de salvar.' : 'Não consegui ler os valores automaticamente — preencha à mão.', !extraido);
@@ -9370,7 +9369,7 @@ function snAbrirModalXpGlobal(mesKey, imagemB64, extraido){
   const opcoes = S.clientes.map(c=>`<option value="${esc(c.codigo)}">${esc(c.nome||c.codigo)}</option>`).join('');
   bg.innerHTML = `<div class="sn-modal">
     <h3>Print da XP Global</h3>
-    <img src="${imagemB64}" style="max-width:100%; max-height:160px; border-radius:8px; margin:6px 0 10px; display:block;">
+    <div class="desc" style="font-size:12px; margin-bottom:6px;">Só escolha de quem é o print — os fundos e o câmbio entram automático.</div>
     <label>Cliente</label>
     <select id="snModalSelect"><option value="">— criar novo —</option>${opcoes}</select>
     <label>Nome (se for criar novo)</label>
@@ -9378,22 +9377,17 @@ function snAbrirModalXpGlobal(mesKey, imagemB64, extraido){
     <label>Código (opcional — só se souber a conta)</label>
     <input type="text" id="snModalCodigo" placeholder="Código da conta">
     ${extraido && extraido.ativos && extraido.ativos.length
-      ? `<div class="desc" style="font-size:11.5px; color:var(--ok); margin-top:4px;">${extraido.ativos.length} fundo(s) lido(s) do print (OCR). Depois de salvar, defina o câmbio e ajuste os fundos na ficha.</div>`
-      : '<div class="desc" style="font-size:11.5px; color:var(--warn); margin-top:4px;">OCR não leu os fundos — cadastre manual na ficha depois de salvar.</div>'}
-    <label>Ganho no mês (R$)</label>
-    <input type="number" id="snModalGanhoMes" value="0">
-    <label>Ganho no ano (R$)</label>
-    <input type="number" id="snModalGanhoAno" value="0">
+      ? `<div class="desc" style="font-size:11.5px; color:var(--ok); margin-top:4px;">${extraido.ativos.length} fundo(s) lido(s) do print — já entram na carteira convertidos.</div>`
+      : '<div class="desc" style="font-size:11.5px; color:var(--warn); margin-top:4px;">OCR não leu os fundos — reveja o print. Você poderá ajustar na ficha.</div>'}
     <div class="btn-row">
       <button class="btn ghost" onclick="document.getElementById('snModalBg').classList.remove('open')">Cancelar</button>
       <button class="btn solid" onclick="snConfirmarModalXpGlobal('${mesKey}')">Salvar</button>
     </div>
   </div>`;
-  bg.dataset.imagem = imagemB64;
   bg.dataset.extraido = JSON.stringify(extraido||{});
   bg.classList.add('open');
 }
-function snConfirmarModalXpGlobal(mesKey){
+async function snConfirmarModalXpGlobal(mesKey){
   const bg = document.getElementById('snModalBg');
   const sel = document.getElementById('snModalSelect').value;
   let cliente;
@@ -9407,15 +9401,14 @@ function snConfirmarModalXpGlobal(mesKey){
     save();
   }
   if(!cliente) return;
-  const ganhoMes = parseFloat(document.getElementById('snModalGanhoMes').value) || 0;
-  const ganhoAno = parseFloat(document.getElementById('snModalGanhoAno').value) || 0;
-  const imagemB64 = bg.dataset.imagem;
   let ativos = [];
   try{ ativos = (JSON.parse(bg.dataset.extraido||'{}').ativos)||[]; }catch(e){}
   bg.classList.remove('open');
   const chave = cliente.codigo || cliente.id;
-  snIngest(mesKey, chave, cliente.nome, 'xpGlobal', {imagemB64, cambio:0, ativos, ganhoMes, ganhoAno});
-  snSetStatus(`XP Global salvo — ${cliente.nome}. Defina o câmbio na ficha pra converter os fundos.`, false);
+  const cambio = await snFetchUSDBRL();
+  snIngest(mesKey, chave, cliente.nome, 'xpGlobal', {cambio, ativos});
+  snAbrirCliente(mesKey, chave);
+  snSetStatus(`XP Global — ${cliente.nome}: ${ativos.length} fundo(s)`+(cambio?` · câmbio ${cambio}.`:' · câmbio não obtido, clique ↻ na ficha.'), false);
 }
 
 // ---------------- Render do consolidado (detalhe cliente+mês) ----------------
@@ -9608,6 +9601,25 @@ function snUpdXgCambio(mesKey, codigo, v){
   c.xpGlobal.cambio = parseFloat(v)||0;
   save(); renderSupernovaDetalhe(mesKey, codigo);
 }
+// Cotação USD→BRL automática (sem digitar). AwesomeAPI, com fallback exchangerate.host.
+async function snFetchUSDBRL(){
+  try{
+    const r = await fetch('https://economia.awesomeapi.com.br/json/last/USD-BRL');
+    if(r.ok){ const j = await r.json(); const b = j && j.USDBRL && parseFloat(j.USDBRL.bid); if(b>0) return +b.toFixed(4); }
+  }catch(e){ /* tenta fallback */ }
+  try{
+    const r2 = await fetch('https://api.exchangerate.host/latest?base=USD&symbols=BRL');
+    if(r2.ok){ const j2 = await r2.json(); const b2 = j2 && j2.rates && parseFloat(j2.rates.BRL); if(b2>0) return +b2.toFixed(4); }
+  }catch(e){ console.warn('câmbio USD-BRL falhou', e); }
+  return 0;
+}
+async function snAtualizarCambio(mesKey, codigo){
+  const c = S.supernova[mesKey] && S.supernova[mesKey].clientes[codigo];
+  if(!c || !c.xpGlobal) return;
+  const cambio = await snFetchUSDBRL();
+  if(cambio>0){ c.xpGlobal.cambio = cambio; save(); }
+  if(snClienteSelecionado===codigo) renderSupernovaDetalhe(mesKey, codigo);
+}
 function snAddXgAtivo(mesKey, codigo){
   const c = S.supernova[mesKey] && S.supernova[mesKey].clientes[codigo];
   if(!c || !c.xpGlobal) return;
@@ -9677,12 +9689,9 @@ function renderSupernovaDetalhe(mesKey, codigo){
 
     ${c.xpGlobal ? `
     <div class="card">
-      <div class="eyebrow">XP Global</div>
-      <img src="${c.xpGlobal.imagemB64}" style="max-width:340px; border-radius:10px; margin:10px 0; display:block;">
-      <div class="grid c3">
-        <div class="field"><label>Câmbio US$ → R$</label><input type="number" step="0.0001" value="${c.xpGlobal.cambio||0}" placeholder="ex: 5.45" onchange="snUpdXgCambio('${mesKey}','${codigo}',this.value)"></div>
-        <div class="field"><label>Ganho mês (R$)</label><input type="number" value="${c.xpGlobal.ganhoMes||0}" onchange="snUpdXpGlobalCampo('${mesKey}','${codigo}','ganhoMes',this.value)"></div>
-        <div class="field"><label>Ganho no ano (R$)</label><input type="number" value="${c.xpGlobal.ganhoAno||0}" onchange="snUpdXpGlobalCampo('${mesKey}','${codigo}','ganhoAno',this.value)"></div>
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+        <div class="eyebrow">XP Global</div>
+        <div style="font-size:12px; color:var(--ink-soft);">Câmbio US$ → R$ (auto): <b>${(c.xpGlobal.cambio||0) ? Number(c.xpGlobal.cambio).toLocaleString('pt-BR',{minimumFractionDigits:4}) : 'buscando…'}</b> <button class="btn ghost sm" onclick="snAtualizarCambio('${mesKey}','${codigo}')" title="Buscar cotação de novo">↻</button></div>
       </div>
       ${snRenderXgAtivos(mesKey, codigo)}
     </div>` : ''}
