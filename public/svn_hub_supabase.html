@@ -2595,6 +2595,7 @@ th.num{text-align:right;}
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.0.4/tesseract.min.js"></script>
 </head>
 <body>
 <div class="app">
@@ -8745,6 +8746,37 @@ function snMesLabel(mesKey){ const [y,m] = (mesKey||'').split('-'); return (m &&
 function snPatrimonioTotal(c){
   return (c.xp && c.xp.patrimonio || 0) + (c.mb && c.mb.patrimonio || 0) + (c.xpGlobal && c.xpGlobal.patrimonio || 0);
 }
+// Rentabilidade consolidada = ganho financeiro somado ÷ patrimônio-base combinado no início
+// do período (mesma fórmula do relatório de referência): saldo inicial REAL informado pela MB;
+// pra XP, que não informa saldo inicial por período, estimado como patrimônio atual menos o
+// ganho do período (aproximação que assume sem aporte/resgate relevante na janela). Só XP+MB —
+// XP Global não tem saldo inicial nem ganho 12m, então fica de fora dessa conta (igual ao
+// relatório de referência, que também consolida "XP + MB" nessa tabela, não os 3).
+function snRentabilidadeConsolidada(c){
+  if(!c.xp && !c.mb) return null;
+  const periodos = [
+    {label:'Mês', gXP: c.xp?c.xp.ganhoMes||0:0, gMB: c.mb?c.mb.ganhoMes||0:0,
+      baseXP: c.xp?(c.xp.patrimonio||0)-(c.xp.ganhoMes||0):0, baseMB: c.mb?c.mb.saldoInicialMes||0:0},
+    {label:'No Ano', gXP: c.xp?c.xp.ganhoAno||0:0, gMB: c.mb?c.mb.ganhoAno||0:0,
+      baseXP: c.xp?(c.xp.patrimonio||0)-(c.xp.ganhoAno||0):0, baseMB: c.mb?c.mb.saldoInicialAno||0:0},
+    {label:'12 Meses', gXP: c.xp?c.xp.ganho12m||0:0, gMB: c.mb?c.mb.resultado12m||0:0,
+      baseXP: c.xp?(c.xp.patrimonio||0)-(c.xp.ganho12m||0):0, baseMB: c.mb?c.mb.saldoInicial12m||0:0},
+  ];
+  return periodos.map(p=>{
+    const ganhoTotal = p.gXP + p.gMB;
+    const baseTotal = p.baseXP + p.baseMB;
+    return {label:p.label, gXP:p.gXP, gMB:p.gMB, ganhoTotal, rentab: baseTotal>0 ? ganhoTotal/baseTotal*100 : 0};
+  });
+}
+function snRenderTabelaRentabilidade(c){
+  const linhas = snRentabilidadeConsolidada(c);
+  if(!linhas) return '<div class="empty">Sem dados de XP ou MB pra calcular rentabilidade consolidada ainda.</div>';
+  return `<table style="margin-top:14px;">
+    <tr><th>Período</th><th class="num">Ganho XP</th><th class="num">Ganho MB</th><th class="num">Ganho total</th><th class="num">Rentab. consolidada</th></tr>
+    ${linhas.map(l=>`<tr><td>${esc(l.label)}</td><td class="num">${fmt(l.gXP)}</td><td class="num">${fmt(l.gMB)}</td><td class="num"><b>${fmt(l.ganhoTotal)}</b></td><td class="num"><b>${l.rentab>=0?'+':''}${l.rentab.toFixed(2)}%</b></td></tr>`).join('')}
+  </table>
+  <div class="desc" style="margin-top:8px; font-size:11px;">Rentabilidade consolidada = ganho financeiro somado ÷ patrimônio-base combinado no início do período (saldo inicial real da MB; pra XP, estimado como patrimônio atual menos o ganho do período). Aporte/resgate relevante no período distorce o percentual — o ganho em R$ continua confiável.</div>`;
+}
 
 // ---------------- Navegação (mês / lista / detalhe) ----------------
 function snNovoMes(){
@@ -8933,6 +8965,19 @@ function snParseXPReport(lines){
   const rentab24m = evoTokens[3] ? snParsePercent(evoTokens[3]) : 0;
   const ganho24m = evoTokens[4] ? scParseMoney(evoTokens[4]) : 0;
 
+  // RESUMO DE INFORMAÇÕES DA CARTEIRA: linhas "MÊS/ANO/12M" com Ganho Financeiro/Rentabilidade/%CDI/Movimentações
+  // nessa ordem — usado pra rentabilidade consolidada (só a XP não tem ganho "ano" na evolução patrimonial acima).
+  const snExtrairLinhaResumoXP = rotulo => {
+    const l = lines.find(x=>{ const t=x.trim(); return t===rotulo || t.startsWith(rotulo+' '); });
+    if(!l) return {ganho:0, rentab:0};
+    const tokens = l.match(/-?R\$\s?[\d.,]+|-?[\d.,]+%/g) || [];
+    return { ganho: tokens[0] ? scParseMoney(tokens[0]) : 0, rentab: tokens[1] ? snParsePercent(tokens[1]) : 0 };
+  };
+  const resumoAno = snExtrairLinhaResumoXP('ANO');
+  const resumo12m = snExtrairLinhaResumoXP('12M');
+  const ganhoAno = resumoAno.ganho, rentabAno = resumoAno.rentab;
+  const ganho12m = resumo12m.ganho, rentab12m = resumo12m.rentab;
+
   // Benchmark: usa o valor "Ano" (2º percentual de cada índice) — simplificação, é a janela mais comparável ao consolidado
   const benchmark = {};
   ['CDI','Ibovespa','IPCA','Dólar'].forEach(nome=>{
@@ -8979,7 +9024,7 @@ function snParseXPReport(lines){
     }
   }catch(e){ console.warn('snParseXPReport: posição detalhada não extraída', e); }
 
-  return {conta, dataReferencia, patrimonio, rentabMes, ganhoMes, rentab24m, ganho24m, benchmark, composicao, ativos};
+  return {conta, dataReferencia, patrimonio, rentabMes, ganhoMes, ganhoAno, rentabAno, ganho12m, rentab12m, rentab24m, ganho24m, benchmark, composicao, ativos};
 }
 
 // ---------------- Parser MB (Relatório de Ganhos Financeiros) ----------------
@@ -9013,6 +9058,15 @@ function snParseMBReport(lines){
   const resultLine = lines.find(l=>/^Resultado Financeiro/i.test(l)) || '';
   const resultTokens = resultLine.replace(/^Resultado Financeiro/i,'').match(/-?[\d.]+,\d{2}/g) || [];
   const ganhoMes = resultTokens[0] ? scParseMoney(resultTokens[0]) : 0;
+  const ganhoAno = resultTokens[1] ? scParseMoney(resultTokens[1]) : 0;
+
+  // Linha "Saldo Inicial <mês> <ano> <12m>" — saldo inicial REAL de cada período (a MB informa
+  // isso, diferente da XP), usado como base da rentabilidade consolidada.
+  const saldoInicialLine = lines.find(l=>/^Saldo Inicial/i.test(l)) || '';
+  const saldoTokens = saldoInicialLine.replace(/^Saldo Inicial/i,'').match(/-?[\d.]+,\d{2}/g) || [];
+  const saldoInicialMes = saldoTokens[0] ? scParseMoney(saldoTokens[0]) : 0;
+  const saldoInicialAno = saldoTokens[1] ? scParseMoney(saldoTokens[1]) : 0;
+  const saldoInicial12m = saldoTokens[2] ? scParseMoney(saldoTokens[2]) : 0;
 
   const benchmark = {};
   ['CDI','IPCA','IBOV','DÓLAR'].forEach(nome=>{
@@ -9060,7 +9114,7 @@ function snParseMBReport(lines){
     }
   }catch(e){ console.warn('snParseMBReport: classificação por indexador falhou', e); }
 
-  return {conta, nome, mesKeyRelatorio, patrimonio, rentabMes, ganhoMes, resultado12m, rentab12m, benchmark, ativos};
+  return {conta, nome, mesKeyRelatorio, patrimonio, rentabMes, ganhoMes, ganhoAno, saldoInicialMes, saldoInicialAno, saldoInicial12m, resultado12m, rentab12m, benchmark, ativos};
 }
 
 // ---------------- Upload / paste ----------------
@@ -9150,12 +9204,37 @@ document.getElementById('snPasteZone').addEventListener('paste', function(e){
   if(!snMesSelecionado) snNovoMes();
   const mesKey = snMesSelecionado;
   const r = new FileReader();
-  r.onload = () => {
-    snAbrirModalXpGlobal(mesKey, r.result);
+  r.onload = async () => {
+    const imagemB64 = r.result;
+    snSetStatus('Lendo o print (OCR)...', false);
+    const extraido = await snExtrairXpGlobal(imagemB64);
+    snSetStatus(extraido ? 'Print lido — confira os valores antes de salvar.' : 'Não consegui ler os valores automaticamente — preencha à mão.', !extraido);
+    snAbrirModalXpGlobal(mesKey, imagemB64, extraido);
   };
   r.readAsDataURL(imgFile);
 });
-function snAbrirModalXpGlobal(mesKey, imagemB64){
+// Lê o print da XP Global via OCR (Tesseract, roda no navegador, sem servidor) e tenta achar
+// patrimônio + ganhos em R$ no texto reconstruído. Best-effort: OCR em screenshot de app não
+// tem a confiabilidade da extração de texto de PDF (camada de texto real) — por isso os campos
+// continuam editáveis no modal, o OCR só poupa o trabalho de digitar do zero quando acerta.
+// Heurística: o maior valor em R$ da tela costuma ser o patrimônio total (maior que qualquer
+// ganho isolado do período); os R$ seguintes, na ordem em que aparecem, viram os palpites de
+// ganho no mês e no ano.
+async function snExtrairXpGlobal(imagemB64){
+  if(typeof Tesseract==='undefined'){ console.warn('Tesseract.js não carregou'); return null; }
+  try{
+    const resultado = await Tesseract.recognize(imagemB64, 'por');
+    const text = resultado.data.text || '';
+    const moneyTokens = [...text.matchAll(/-?R\$\s?[\d.,]+/g)].map(m=>({raw:m[0], val:scParseMoney(m[0])}))
+      .filter(t=>!isNaN(t.val));
+    if(!moneyTokens.length) return null;
+    const porValorDesc = [...moneyTokens].sort((a,b)=>Math.abs(b.val)-Math.abs(a.val));
+    const patrimonio = porValorDesc[0].val;
+    const ganhoCandidatos = moneyTokens.filter(t=>t!==porValorDesc[0]);
+    return { patrimonio, ganhoMes: ganhoCandidatos[0] ? ganhoCandidatos[0].val : 0, ganhoAno: ganhoCandidatos[1] ? ganhoCandidatos[1].val : 0 };
+  }catch(e){ console.warn('OCR do print da XP Global falhou', e); return null; }
+}
+function snAbrirModalXpGlobal(mesKey, imagemB64, extraido){
   let bg = document.getElementById('snModalBg');
   if(!bg){
     bg = document.createElement('div');
@@ -9173,12 +9252,13 @@ function snAbrirModalXpGlobal(mesKey, imagemB64){
     <input type="text" id="snModalNome" placeholder="Nome do cliente">
     <label>Código (opcional — só se souber a conta)</label>
     <input type="text" id="snModalCodigo" placeholder="Código da conta">
+    ${extraido ? '<div class="desc" style="font-size:11.5px; color:var(--ok); margin-top:4px;">Valores lidos automaticamente do print (OCR) — confira antes de salvar.</div>' : ''}
     <label>Patrimônio</label>
-    <input type="number" id="snModalPatrimonio" value="0">
+    <input type="number" id="snModalPatrimonio" value="${extraido ? extraido.patrimonio : 0}">
     <label>Ganho no mês</label>
-    <input type="number" id="snModalGanhoMes" value="0">
+    <input type="number" id="snModalGanhoMes" value="${extraido ? extraido.ganhoMes : 0}">
     <label>Ganho no ano</label>
-    <input type="number" id="snModalGanhoAno" value="0">
+    <input type="number" id="snModalGanhoAno" value="${extraido ? extraido.ganhoAno : 0}">
     <div class="btn-row">
       <button class="btn ghost" onclick="document.getElementById('snModalBg').classList.remove('open')">Cancelar</button>
       <button class="btn solid" onclick="snConfirmarModalXpGlobal('${mesKey}')">Salvar</button>
@@ -9362,9 +9442,6 @@ function renderSupernovaDetalhe(mesKey, codigo){
   if(!c){ el.innerHTML = ''; return; }
 
   const total = snPatrimonioTotal(c);
-  const gXP = c.xp ? c.xp.ganhoMes||0 : 0;
-  const gMB = c.mb ? c.mb.ganhoMes||0 : 0;
-  const gXPG = c.xpGlobal ? c.xpGlobal.ganhoMes||0 : 0;
   const pct = v => total>0 ? (v/total*100).toFixed(1) : '0';
 
   el.innerHTML = `
@@ -9387,10 +9464,7 @@ function renderSupernovaDetalhe(mesKey, codigo){
         <div class="kpi"><div class="l">MB</div><div class="v">${fmt(c.mb?c.mb.patrimonio:0)}</div><div class="s">${pct(c.mb?c.mb.patrimonio:0)}%</div></div>
         <div class="kpi"><div class="l">XP Global</div><div class="v">${fmt(c.xpGlobal?c.xpGlobal.patrimonio:0)}</div><div class="s">${pct(c.xpGlobal?c.xpGlobal.patrimonio:0)}%</div></div>
       </div>
-      <table style="margin-top:14px;">
-        <tr><th>Período</th><th class="num">Ganho XP</th><th class="num">Ganho MB</th><th class="num">Ganho XP Global</th><th class="num">Ganho total</th></tr>
-        <tr><td>Mês</td><td class="num">${fmt(gXP)}</td><td class="num">${fmt(gMB)}</td><td class="num">${fmt(gXPG)}</td><td class="num"><b>${fmt(gXP+gMB+gXPG)}</b></td></tr>
-      </table>
+      ${snRenderTabelaRentabilidade(c)}
     </div>
 
     <div class="card">
@@ -9446,9 +9520,6 @@ function snRenderIndicesSlide(mesKey){
 }
 function snRenderConsolidadoSlide(c){
   const total = snPatrimonioTotal(c);
-  const gXP = c.xp ? c.xp.ganhoMes||0 : 0;
-  const gMB = c.mb ? c.mb.ganhoMes||0 : 0;
-  const gXPG = c.xpGlobal ? c.xpGlobal.ganhoMes||0 : 0;
   const pct = v => total>0 ? (v/total*100).toFixed(1) : '0';
   return `<div class="grid c4" style="margin-top:10px;">
       <div class="kpi dark"><div class="l">Patrimônio total</div><div class="v">${fmt(total)}</div></div>
@@ -9456,10 +9527,7 @@ function snRenderConsolidadoSlide(c){
       <div class="kpi"><div class="l">MB</div><div class="v">${fmt(c.mb?c.mb.patrimonio:0)}</div><div class="s">${pct(c.mb?c.mb.patrimonio:0)}%</div></div>
       <div class="kpi"><div class="l">XP Global</div><div class="v">${fmt(c.xpGlobal?c.xpGlobal.patrimonio:0)}</div><div class="s">${pct(c.xpGlobal?c.xpGlobal.patrimonio:0)}%</div></div>
     </div>
-    <table style="margin-top:14px;">
-      <tr><th>Período</th><th class="num">Ganho XP</th><th class="num">Ganho MB</th><th class="num">Ganho XP Global</th><th class="num">Ganho total</th></tr>
-      <tr><td>Mês</td><td class="num">${fmt(gXP)}</td><td class="num">${fmt(gMB)}</td><td class="num">${fmt(gXPG)}</td><td class="num"><b>${fmt(gXP+gMB+gXPG)}</b></td></tr>
-    </table>`;
+    ${snRenderTabelaRentabilidade(c)}`;
 }
 function snRenderNavDots(){
   const el = document.getElementById('snNavDots'); if(!el) return;
