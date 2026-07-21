@@ -242,6 +242,12 @@ th.num{text-align:right;}
 /* Modo apresentação limpo: Editar/Apresentar/Slides somem de vez; só o Sair continua (canto). */
 #view-supernova #snPresentView.sn-presenting .sn-present-modes{display:none;}
 #view-supernova #snPresentView.sn-presenting .sn-slide-picker{display:none !important;}
+/* Botões do topo com fundo escuro sólido pra terem contraste sobre slides bege também */
+#view-supernova #snPresentView .sn-present-modes .btn,
+#view-supernova #snPresentView .exit-present{background:rgba(34,30,29,.9); color:var(--cream-on-dark); border-color:rgba(255,255,255,.22);}
+#view-supernova #snPresentView .sn-present-modes .btn:hover,
+#view-supernova #snPresentView .exit-present:hover{background:#221E1D; color:#fff;}
+#view-supernova #snPresentView .sn-present-modes .sn-mode-btn.active{background:var(--amber); border-color:var(--amber); color:#fff;}
 /* Seletor de slides */
 #view-supernova #snPresentView .sn-present-modes{align-items:center;}
 #view-supernova #snPresentView .sn-slide-picker{position:absolute; top:60px; left:30px; z-index:6; background:var(--charcoal); border:1px solid var(--line-dark); border-radius:12px; padding:12px 14px; min-width:220px; box-shadow:0 10px 30px rgba(0,0,0,.4);}
@@ -4973,7 +4979,7 @@ th.num{text-align:right;}
         </div>
         <div class="slide bg-cream" data-slide="1">
           <span class="eyebrow">Panorama</span><h2 class="title">O que aconteceu no mês</h2>
-          <div id="snSlidePanorama" style="max-width:760px;"></div>
+          <div id="snSlidePanorama" style="max-width:960px;"></div>
         </div>
         <div class="slide bg-cream2" data-slide="2">
           <span class="eyebrow">Índices do mês</span><h2 class="title">Brasil &amp; EUA</h2>
@@ -9822,11 +9828,11 @@ function snRenderPanoramaSlide(mesKey){
   const bucket = S.supernova[mesKey];
   const itens = (bucket && bucket.panorama) || [];
   if(!itens.length) return '<div class="empty">Sem panorama registrado para este mês.</div>';
-  return itens.map((it,i)=>`<div class="sn-pano-slide-item" data-pano-i="${i}" style="display:flex; gap:16px; padding:12px 0;">
-    <div class="ed" data-pano-field="tag" style="width:110px; flex-shrink:0; font-size:11px; letter-spacing:.08em; font-weight:700; color:var(--amber); text-transform:uppercase; padding-top:2px;">${esc(it.tag||'')}</div>
+  return itens.map((it,i)=>`<div class="sn-pano-slide-item" data-pano-i="${i}" style="display:flex; gap:22px; padding:16px 0;">
+    <div class="ed" data-pano-field="tag" style="width:140px; flex-shrink:0; font-size:13px; letter-spacing:.08em; font-weight:700; color:var(--amber); text-transform:uppercase; padding-top:3px;">${esc(it.tag||'')}</div>
     <div style="flex:1;">
-      <div class="ed" data-pano-field="titulo" style="font-weight:700; font-size:14.5px; margin-bottom:3px;">${esc(it.titulo||'')}</div>
-      <div class="ed" data-pano-field="corpo" style="font-size:13px; line-height:1.5; white-space:pre-wrap;">${esc(it.corpo||'')}</div>
+      <div class="ed" data-pano-field="titulo" style="font-weight:700; font-size:20px; margin-bottom:5px;">${esc(it.titulo||'')}</div>
+      <div class="ed" data-pano-field="corpo" style="font-size:16px; line-height:1.55; white-space:pre-wrap;">${esc(it.corpo||'')}</div>
     </div>
   </div>`).join('');
 }
