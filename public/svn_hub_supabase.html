@@ -4891,13 +4891,14 @@ th.num{text-align:right;}
       <div class="sn-tabs" id="snMesTabs" style="margin-top:14px;"></div>
     </div>
 
+    <div id="snMacroCard"></div>
+
     <div class="card" id="snUploadCard">
-      <div class="eyebrow">Importar relatórios do mês</div>
+      <div class="eyebrow">Importar relatórios do cliente</div>
+      <div class="desc" style="margin-bottom:8px;">Selecione de uma vez todos os PDFs de um cliente (XP + MB) — o tipo de cada arquivo é detectado sozinho e tudo cai na mesma ficha consolidada.</div>
       <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:10px; align-items:center;">
-        <button class="btn ghost" onclick="document.getElementById('snFileXP').click()">📄 Importar PDF XP</button>
-        <input type="file" id="snFileXP" accept="application/pdf" style="display:none">
-        <button class="btn ghost" onclick="document.getElementById('snFileMB').click()">📄 Importar PDF MB</button>
-        <input type="file" id="snFileMB" accept="application/pdf" style="display:none">
+        <button class="btn solid" onclick="document.getElementById('snFileBatch').click()">📄 Importar relatórios (XP + MB)</button>
+        <input type="file" id="snFileBatch" accept="application/pdf" multiple style="display:none">
       </div>
       <div class="sn-paste" id="snPasteZone" contenteditable="true" style="margin-top:12px;">Cole aqui o print da XP Global (clique e Ctrl+V)</div>
       <div class="import-status" id="snImportStatus" style="margin-top:8px; font-size:12px;"></div>
@@ -8781,6 +8782,7 @@ function renderSupernova(){
   const uploadCard = document.getElementById('snUploadCard');
   if(uploadCard) uploadCard.style.display = snMesSelecionado ? '' : 'none';
   const bucket = snMesSelecionado ? snEnsureBucketShape(S.supernova[snMesSelecionado]) : null;
+  renderSupernovaMacro(snMesSelecionado);
   if(snClienteSelecionado && bucket && bucket.clientes[snClienteSelecionado]){
     document.getElementById('snListaMes').style.display = 'none';
     document.getElementById('snDetalheCliente').style.display = '';
@@ -8794,13 +8796,32 @@ function renderSupernova(){
   }
 }
 
+// Panorama e Índices são do mês inteiro (valem pra todos os clientes que caírem nesse mês),
+// então moram na visão do mês — preenche uma vez, antes ou depois de importar qualquer cliente.
+function renderSupernovaMacro(mesKey){
+  const el = document.getElementById('snMacroCard');
+  if(!el) return;
+  if(!mesKey || !S.supernova[mesKey]){ el.innerHTML=''; return; }
+  el.innerHTML = `
+    <div class="card">
+      <div class="eyebrow">Panorama do mês</div>
+      <div class="desc" style="margin-bottom:8px;">Itens macro (tag + título + texto) — preenche uma vez, vale pra todos os clientes desse mês.</div>
+      ${snRenderPanoramaEditor(mesKey)}
+    </div>
+    <div class="card">
+      <div class="eyebrow">Índices do mês</div>
+      <div class="desc" style="margin-bottom:8px;">Compartilhado no mês — preencha à mão (Mês/Ano em %).</div>
+      ${snRenderIndicesEditor(mesKey)}
+    </div>
+  `;
+}
 function renderSupernovaLista(){
   const el = document.getElementById('snListaMes');
   if(!el) return;
   if(!snMesSelecionado || !S.supernova[snMesSelecionado]){ el.innerHTML=''; return; }
   const clientes = Object.values(S.supernova[snMesSelecionado].clientes||{});
   if(!clientes.length){
-    el.innerHTML = '<div class="card"><div class="empty">Nenhum cliente importado neste mês ainda. Suba um PDF da XP ou da MB acima.</div></div>';
+    el.innerHTML = '<div class="card"><div class="empty">Nenhum cliente importado neste mês ainda. Importe os relatórios acima.</div></div>';
     return;
   }
   el.innerHTML = '<div class="grid c3">' + clientes.map(c=>`
@@ -9029,52 +9050,87 @@ function snParseMBReport(lines){
 }
 
 // ---------------- Upload / paste ----------------
-async function snHandlePdf(file, tipo){
-  if(typeof pdfjsLib==='undefined'){ snSetStatus('A biblioteca de PDF não carregou. Verifique a internet e tente de novo.', true); return; }
+// Detecta se um PDF é relatório XP ou MB pelo conteúdo (mesmas âncoras usadas pelos parsers),
+// pra poder jogar vários arquivos de institutições diferentes no mesmo botão.
+function snDetectarTipoRelatorio(lines){
+  const text = lines.join(' ');
+  if(/Cliente:\s*[^:]+?\s*ID:\s*\d+/i.test(text) || /Vis[aã]o Detalhada de Renda Fixa Digital/i.test(text) || /Resultado Financeiro/i.test(text)) return 'mb';
+  if(/PATRIM[ÔO]NIO TOTAL BRUTO/i.test(text) || /Estrat[ée]gias\s+Saldo Bruto/i.test(text)) return 'xp';
+  return null;
+}
+// Lê e ingere um único PDF (tipo forçado ou auto-detectado). Retorna {mesKey, codigo, nome, tipo, patrimonio}
+// pra quem chamou saber onde ele caiu, ou null se não deu pra processar.
+async function snHandlePdf(file, tipoForcado){
+  if(typeof pdfjsLib==='undefined'){ snSetStatus('A biblioteca de PDF não carregou. Verifique a internet e tente de novo.', true); return null; }
   if(!snMesSelecionado) snNovoMes();
-  snSetStatus('Lendo PDF...', false);
   try{
     const buf = await file.arrayBuffer();
     const lines = await scPdfToLines(buf);
+    const tipo = tipoForcado || snDetectarTipoRelatorio(lines);
+    if(!tipo){ snSetStatus(`Não reconheci o tipo do relatório em "${file.name}" — não parece XP nem MB.`, true); return null; }
     if(tipo==='xp'){
       const dados = snParseXPReport(lines);
-      if(!dados.conta){ snSetStatus('Não consegui achar o código da conta nesse PDF da XP.', true); return; }
+      if(!dados.conta){ snSetStatus(`Não consegui achar o código da conta no PDF "${file.name}" (XP).`, true); return null; }
       const mesKey = dados.dataReferencia ? snMesKeyFromData(dados.dataReferencia) : snMesSelecionado;
       const cliente = snResolveCliente(dados.conta, '');
       if(cliente){
         const chave = cliente.codigo || dados.conta;
         snIngest(mesKey, chave, cliente.nome, 'xp', dados);
-        snSetStatus(`XP importado — ${cliente.nome} (${dados.conta}), patrimônio ${fmt(dados.patrimonio)}.`, false);
-      } else {
-        snAbrirModalCliente(dados.conta, '', (c)=>{ snIngest(mesKey, c.codigo || dados.conta, c.nome, 'xp', dados); });
+        return {mesKey, codigo:chave, nome:cliente.nome, tipo:'xp', patrimonio:dados.patrimonio};
       }
+      return await new Promise(resolve=>{
+        snAbrirModalCliente(dados.conta, '', (c)=>{
+          const chave = c.codigo || dados.conta;
+          snIngest(mesKey, chave, c.nome, 'xp', dados);
+          resolve({mesKey, codigo:chave, nome:c.nome, tipo:'xp', patrimonio:dados.patrimonio});
+        });
+      });
     } else {
       const dados = snParseMBReport(lines);
-      if(!dados.conta){ snSetStatus('Não consegui achar o ID do cliente nesse PDF da MB.', true); return; }
+      if(!dados.conta){ snSetStatus(`Não consegui achar o ID do cliente no PDF "${file.name}" (MB).`, true); return null; }
       const mesKey = dados.mesKeyRelatorio || snMesSelecionado;
       const cliente = snResolveCliente(dados.conta, dados.nome);
       if(cliente){
         const chave = cliente.codigo || dados.conta;
         snIngest(mesKey, chave, cliente.nome, 'mb', dados);
-        snSetStatus(`MB importado — ${cliente.nome} (${dados.conta}), patrimônio ${fmt(dados.patrimonio)}.`, false);
-      } else {
-        snAbrirModalCliente(dados.conta, dados.nome, (c)=>{ snIngest(mesKey, c.codigo || dados.conta, c.nome, 'mb', dados); });
+        return {mesKey, codigo:chave, nome:cliente.nome, tipo:'mb', patrimonio:dados.patrimonio};
       }
+      return await new Promise(resolve=>{
+        snAbrirModalCliente(dados.conta, dados.nome, (c)=>{
+          const chave = c.codigo || dados.conta;
+          snIngest(mesKey, chave, c.nome, 'mb', dados);
+          resolve({mesKey, codigo:chave, nome:c.nome, tipo:'mb', patrimonio:dados.patrimonio});
+        });
+      });
     }
   }catch(err){
     console.error(err);
-    snSetStatus('Não consegui ler esse PDF.', true);
+    snSetStatus(`Não consegui ler o PDF "${file.name}".`, true);
+    return null;
   }
 }
-document.getElementById('snFileXP').addEventListener('change', async function(e){
-  const f = e.target.files[0]; if(!f) return;
-  await snHandlePdf(f, 'xp');
+// Botão único: joga todos os PDFs de um cliente (XP + MB) de uma vez, ingere cada um na
+// mesma ficha (por código canônico) e, no fim, abre direto a página consolidada dele.
+document.getElementById('snFileBatch').addEventListener('change', async function(e){
+  const files = Array.from(e.target.files || []);
   e.target.value = '';
-});
-document.getElementById('snFileMB').addEventListener('change', async function(e){
-  const f = e.target.files[0]; if(!f) return;
-  await snHandlePdf(f, 'mb');
-  e.target.value = '';
+  if(!files.length) return;
+  snSetStatus(`Lendo ${files.length} relatório(s)...`, false);
+  const resultados = [];
+  for(const file of files){
+    const r = await snHandlePdf(file);
+    if(r) resultados.push(r);
+  }
+  if(!resultados.length){ snSetStatus('Nenhum relatório processado.', true); return; }
+  const resumo = resultados.map(r=>`${r.tipo.toUpperCase()} · ${r.nome}`).join('; ');
+  const codigosUnicos = [...new Set(resultados.map(r=>r.codigo))];
+  if(codigosUnicos.length===1){
+    snSetStatus(`Importado: ${resumo}. Abrindo ficha consolidada.`, false);
+    snAbrirCliente(resultados[0].mesKey, codigosUnicos[0]);
+  } else {
+    snSetStatus(`Importado: ${resumo}.`, false);
+    renderSupernova();
+  }
 });
 document.getElementById('snPasteZone').addEventListener('paste', function(e){
   const items = (e.clipboardData || window.clipboardData).items;
@@ -9209,12 +9265,12 @@ function snAddPanoramaItem(mesKey){
   const bucket = S.supernova[mesKey]; if(!bucket) return;
   if(!Array.isArray(bucket.panorama)) bucket.panorama = [];
   bucket.panorama.push({tag:'', titulo:'', corpo:''});
-  save(); renderSupernovaDetalhe(mesKey, snClienteSelecionado);
+  save(); renderSupernovaMacro(mesKey);
 }
 function snRemPanoramaItem(mesKey, i){
   const bucket = S.supernova[mesKey]; if(!bucket || !bucket.panorama) return;
   bucket.panorama.splice(i,1);
-  save(); renderSupernovaDetalhe(mesKey, snClienteSelecionado);
+  save(); renderSupernovaMacro(mesKey);
 }
 function snUpdPanoramaItem(mesKey, i, campo, val){
   const bucket = S.supernova[mesKey]; if(!bucket || !bucket.panorama[i]) return;
@@ -9311,18 +9367,6 @@ function renderSupernovaDetalhe(mesKey, codigo){
           <button class="btn ghost" onclick="snFecharDetalhe()">← Voltar</button>
         </div>
       </div>
-    </div>
-
-    <div class="card">
-      <div class="eyebrow">Panorama do mês</div>
-      <div class="desc" style="margin-bottom:8px;">Itens macro (tag + título + texto) — compartilhado por todos os clientes desse mês.</div>
-      ${snRenderPanoramaEditor(mesKey)}
-    </div>
-
-    <div class="card">
-      <div class="eyebrow">Índices do mês</div>
-      <div class="desc" style="margin-bottom:8px;">Compartilhado no mês — preencha à mão (Mês/Ano em %).</div>
-      ${snRenderIndicesEditor(mesKey)}
     </div>
 
     <div class="card">
