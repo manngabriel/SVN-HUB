@@ -9333,16 +9333,18 @@ async function snExtrairXpGlobal(imagemB64){
     linhas.forEach(l=>{
       if(/mutual funds/i.test(l)) { nomeBuf=''; return; }      // header do card (tem o US$ total) — pula
       const curTokens = l.match(curG) || [];
-      if(curTokens.length < 2){
-        // Linha sem valores suficientes = texto (ticker/nome do fundo). Guarda se não for cabeçalho.
-        const soTexto = l.replace(curG,'').replace(pctRe,'').replace(/[\d.,%↑↓+\-|·•$()]/g,'').trim();
+      if(curTokens.length === 0){
+        // Linha só de texto = ticker/nome do fundo. Guarda se não for cabeçalho de tabela.
+        const soTexto = l.replace(pctRe,'').replace(/[\d.,%↑↓+\-|·•$()]/g,'').trim();
         if(soTexto.length>=2 && !ehCabecalho(l)) nomeBuf = (nomeBuf?nomeBuf+' ':'')+l;
         return;
       }
+      if(curTokens.length < 2){ nomeBuf=''; return; }   // 1 US$ = linha de categoria (Cash, ETFs...) — ignora
       // Linha de fundo: >=2 US$ (a real tem 4: preço atual, médio, aplicado, posição).
+      // Valor = maior US$ da linha ≈ Posição (valor de mercado); robusto à ordem que o OCR devolve.
       const valores = curTokens.map(t=>scParseMoney(t)).filter(v=>v>0);
-      const valorUSD = valores.length ? valores[valores.length-1] : 0;   // POSIÇÃO = último
-      if(!(valorUSD>0)){ return; }
+      const valorUSD = valores.length ? Math.max(...valores) : 0;
+      if(!(valorUSD>0)){ nomeBuf=''; return; }
       const pctM = l.match(pctRe);
       const nomeLinha = l.slice(0, l.search(/\d/)).replace(/[|·•]/g,' ').trim();
       let nome = ((nomeBuf?nomeBuf+' ':'')+nomeLinha).replace(/\b(US?\$|U\$|R\$)\b/g,'').replace(/\s+/g,' ').trim();
@@ -9351,9 +9353,9 @@ async function snExtrairXpGlobal(imagemB64){
       nomeBuf = '';
     });
     if(!ativos.length){
-      // Fallback: nenhuma linha reconhecida — usa o maior US$ da tela como fundo único.
+      // Fallback: nenhum fundo reconhecido — usa o maior US$ da tela como total, pra revisar na ficha.
       const anyTokens = [...text.matchAll(curG)].map(m=>scParseMoney(m[0])).filter(v=>v>0);
-      if(anyTokens.length){ ativos.push({ nome:'XP Global', valorUSD: Math.max(...anyTokens), rentabMes:0 }); }
+      if(anyTokens.length){ ativos.push({ nome:'Carteira XP Global (revisar nome)', valorUSD: Math.max(...anyTokens), rentabMes:0 }); }
     }
     return ativos.length ? { ativos, ganhoMes:0, ganhoAno:0 } : null;
   }catch(e){ console.warn('OCR do print da XP Global falhou', e); return null; }
