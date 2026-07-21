@@ -8701,34 +8701,37 @@ function snEnsureBucketShape(bucket){
   snMergeClientesDuplicados(bucket);
   return bucket;
 }
-// Une entradas do mesmo cliente que ficaram em chaves diferentes (bug antigo: XP e MB
-// usavam o número de conta de cada PDF como chave, mas contas XP e MB são números
-// diferentes pro mesmo cliente). Resolve pela chave canônica em S.clientes (código,
-// senão nome) e funde xp/mb/xpGlobal/oportunidade na entrada que sobra.
+// Ignora acento/maiúscula/espaço extra — nome legal completo do relatório da MB não bate
+// caractere-a-caractere com o nome cadastrado na Base de Clientes, mesmo sendo a mesma pessoa.
+function snNormNome(s){ return scNormTxt(s).trim().replace(/\s+/g,' '); }
+// Une entradas do mesmo cliente que ficaram em chaves diferentes dentro do mês. Agrupa por
+// nome normalizado — mesmo se cada chave já for um código "de verdade" cadastrado na Base
+// de Clientes (caso de dois cadastros distintos terem sido criados pra mesma pessoa, um por
+// conta XP e outro por conta/ID MB), porque dentro de um mês do Supernova duas fichas com o
+// mesmo nome só podem ser a mesma pessoa. Funde xp/mb/xpGlobal/oportunidade na que sobra.
 function snMergeClientesDuplicados(bucket){
   const clientes = bucket.clientes || {};
   const grupos = {};
   Object.keys(clientes).forEach(chave=>{
     const c = clientes[chave];
-    const base = S.clientes.find(x=>x.codigo===chave) || S.clientes.find(x=>(x.nome||'').trim().toLowerCase()===(c.nome||'').trim().toLowerCase() && (c.nome||'').trim());
-    const canonica = (base && base.codigo) || chave;
-    (grupos[canonica] = grupos[canonica] || []).push(chave);
+    const nomeNorm = snNormNome(c.nome);
+    const sig = nomeNorm ? 'nome:'+nomeNorm : 'chave:'+chave;
+    (grupos[sig] = grupos[sig] || []).push(chave);
   });
   let changed = false;
-  Object.entries(grupos).forEach(([canonica, chaves])=>{
-    if(chaves.length===1 && chaves[0]===canonica) return;
-    const destino = clientes[canonica] || clientes[chaves[0]];
+  Object.values(grupos).forEach(chaves=>{
+    if(chaves.length<2) return;
+    // prioriza como destino a chave que já é o código cadastrado do cliente na Base
+    const chaveDestino = chaves.find(ch=>S.clientes.some(x=>x.codigo===ch)) || chaves[0];
+    const destino = clientes[chaveDestino];
     chaves.forEach(chave=>{
+      if(chave===chaveDestino) return;
       const c = clientes[chave];
-      if(c===destino) return;
       ['xp','mb','xpGlobal'].forEach(campo=>{ if(c[campo] && !destino[campo]) destino[campo] = c[campo]; });
       if((!destino.oportunidade || !(destino.oportunidade.titulo||destino.oportunidade.sub)) && c.oportunidade) destino.oportunidade = c.oportunidade;
       delete clientes[chave];
       changed = true;
     });
-    destino.codigo = canonica;
-    clientes[canonica] = destino;
-    changed = true;
   });
   if(changed) save();
 }
@@ -8844,8 +8847,8 @@ function snResolveCliente(codigo, nomeFallback){
     if(c) return c;
   }
   if(nomeFallback){
-    const alvo = nomeFallback.trim().toLowerCase();
-    const c = S.clientes.find(x=>(x.nome||'').trim().toLowerCase()===alvo);
+    const alvo = snNormNome(nomeFallback);
+    const c = S.clientes.find(x=>snNormNome(x.nome)===alvo);
     if(c) return c;
   }
   return null;
@@ -9058,50 +9061,27 @@ function snDetectarTipoRelatorio(lines){
   if(/PATRIM[ÔO]NIO TOTAL BRUTO/i.test(text) || /Estrat[ée]gias\s+Saldo Bruto/i.test(text)) return 'xp';
   return null;
 }
-// Lê e ingere um único PDF (tipo forçado ou auto-detectado). Retorna {mesKey, codigo, nome, tipo, patrimonio}
-// pra quem chamou saber onde ele caiu, ou null se não deu pra processar.
-async function snHandlePdf(file, tipoForcado){
+// Só lê e faz o parse de um PDF — não ingere ainda. A ingestão (snIngest) fica pra depois
+// de resolver o cliente do lote inteiro, porque um lote é sempre de UMA pessoa só: não faz
+// sentido perguntar "quem é esse cliente" arquivo por arquivo se já sabemos a resposta pelo
+// primeiro que bateu com um cadastro existente.
+async function snParsePdfRelatorio(file){
   if(typeof pdfjsLib==='undefined'){ snSetStatus('A biblioteca de PDF não carregou. Verifique a internet e tente de novo.', true); return null; }
-  if(!snMesSelecionado) snNovoMes();
   try{
     const buf = await file.arrayBuffer();
     const lines = await scPdfToLines(buf);
-    const tipo = tipoForcado || snDetectarTipoRelatorio(lines);
+    const tipo = snDetectarTipoRelatorio(lines);
     if(!tipo){ snSetStatus(`Não reconheci o tipo do relatório em "${file.name}" — não parece XP nem MB.`, true); return null; }
     if(tipo==='xp'){
       const dados = snParseXPReport(lines);
       if(!dados.conta){ snSetStatus(`Não consegui achar o código da conta no PDF "${file.name}" (XP).`, true); return null; }
       const mesKey = dados.dataReferencia ? snMesKeyFromData(dados.dataReferencia) : snMesSelecionado;
-      const cliente = snResolveCliente(dados.conta, '');
-      if(cliente){
-        const chave = cliente.codigo || dados.conta;
-        snIngest(mesKey, chave, cliente.nome, 'xp', dados);
-        return {mesKey, codigo:chave, nome:cliente.nome, tipo:'xp', patrimonio:dados.patrimonio};
-      }
-      return await new Promise(resolve=>{
-        snAbrirModalCliente(dados.conta, '', (c)=>{
-          const chave = c.codigo || dados.conta;
-          snIngest(mesKey, chave, c.nome, 'xp', dados);
-          resolve({mesKey, codigo:chave, nome:c.nome, tipo:'xp', patrimonio:dados.patrimonio});
-        });
-      });
+      return {tipo:'xp', dados, mesKey};
     } else {
       const dados = snParseMBReport(lines);
       if(!dados.conta){ snSetStatus(`Não consegui achar o ID do cliente no PDF "${file.name}" (MB).`, true); return null; }
       const mesKey = dados.mesKeyRelatorio || snMesSelecionado;
-      const cliente = snResolveCliente(dados.conta, dados.nome);
-      if(cliente){
-        const chave = cliente.codigo || dados.conta;
-        snIngest(mesKey, chave, cliente.nome, 'mb', dados);
-        return {mesKey, codigo:chave, nome:cliente.nome, tipo:'mb', patrimonio:dados.patrimonio};
-      }
-      return await new Promise(resolve=>{
-        snAbrirModalCliente(dados.conta, dados.nome, (c)=>{
-          const chave = c.codigo || dados.conta;
-          snIngest(mesKey, chave, c.nome, 'mb', dados);
-          resolve({mesKey, codigo:chave, nome:c.nome, tipo:'mb', patrimonio:dados.patrimonio});
-        });
-      });
+      return {tipo:'mb', dados, mesKey};
     }
   }catch(err){
     console.error(err);
@@ -9109,27 +9089,45 @@ async function snHandlePdf(file, tipoForcado){
     return null;
   }
 }
-// Botão único: joga todos os PDFs de um cliente (XP + MB) de uma vez, ingere cada um na
-// mesma ficha (por código canônico) e, no fim, abre direto a página consolidada dele.
+// Botão único: joga todos os PDFs de um cliente (XP + MB) de uma vez. Lê todos primeiro,
+// resolve UM cliente pro lote inteiro (cruzando conta/nome de qualquer um dos relatórios
+// contra a Base de Clientes) e, só se nenhum bater, pergunta uma única vez — nunca um modal
+// por arquivo. Todos os arquivos do lote caem na mesma ficha, que abre no final.
 document.getElementById('snFileBatch').addEventListener('change', async function(e){
   const files = Array.from(e.target.files || []);
   e.target.value = '';
   if(!files.length) return;
+  if(!snMesSelecionado) snNovoMes();
   snSetStatus(`Lendo ${files.length} relatório(s)...`, false);
-  const resultados = [];
+
+  const itens = [];
   for(const file of files){
-    const r = await snHandlePdf(file);
-    if(r) resultados.push(r);
+    const r = await snParsePdfRelatorio(file);
+    if(r) itens.push(r);
   }
-  if(!resultados.length){ snSetStatus('Nenhum relatório processado.', true); return; }
-  const resumo = resultados.map(r=>`${r.tipo.toUpperCase()} · ${r.nome}`).join('; ');
-  const codigosUnicos = [...new Set(resultados.map(r=>r.codigo))];
-  if(codigosUnicos.length===1){
+  if(!itens.length){ snSetStatus('Nenhum relatório processado.', true); return; }
+
+  let cliente = null;
+  for(const it of itens){
+    cliente = snResolveCliente(it.dados.conta, it.dados.nome || '');
+    if(cliente) break;
+  }
+  const mesKey = itens[0].mesKey;
+
+  const finalizarLote = (clienteFinal) => {
+    const chave = clienteFinal.codigo || itens[0].dados.conta;
+    itens.forEach(it=> snIngest(it.mesKey || mesKey, chave, clienteFinal.nome, it.tipo, it.dados));
+    const resumo = itens.map(it=>`${it.tipo.toUpperCase()} · ${clienteFinal.nome}`).join('; ');
     snSetStatus(`Importado: ${resumo}. Abrindo ficha consolidada.`, false);
-    snAbrirCliente(resultados[0].mesKey, codigosUnicos[0]);
+    snAbrirCliente(mesKey, chave);
+  };
+
+  if(cliente){
+    finalizarLote(cliente);
   } else {
-    snSetStatus(`Importado: ${resumo}.`, false);
-    renderSupernova();
+    const itemComNome = itens.find(it=>it.dados.nome);
+    const dicaNome = itemComNome ? itemComNome.dados.nome : '';
+    snAbrirModalCliente(itens[0].dados.conta, dicaNome, finalizarLote);
   }
 });
 document.getElementById('snPasteZone').addEventListener('paste', function(e){
