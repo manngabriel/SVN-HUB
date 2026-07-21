@@ -5,6 +5,25 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>SVN Hub · Gabriel Winkelmann</title>
 <link rel="icon" type="image/png" href="Icone.png">
+<!-- Guard de autenticação: exige sessão Supabase, senão manda pro login -->
+<style id="authGuardStyle">html{visibility:hidden}</style>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+(function(){
+  const AUTH_URL = 'https://qevblxazhhktmtvzqgzi.supabase.co';
+  const AUTH_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFldmJseGF6aGhrdG10dnpxZ3ppIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQzMDM0MTksImV4cCI6MjA5OTg3OTQxOX0.VH3O0hKxgYR1cHIUAbUdK4CIOxNacrY-J2MEVVTPKlM';
+  function reveal(){ const s=document.getElementById('authGuardStyle'); if(s) s.remove(); }
+  function toLogin(){ window.location.replace('login.html'); }
+  try{
+    const sb = window.supabase.createClient(AUTH_URL, AUTH_ANON_KEY);
+    window.sbAuth = sb;
+    sb.auth.getUser().then(({data})=>{
+      if(data && data.user){ reveal(); }
+      else { toLogin(); }
+    }).catch(toLogin);
+  }catch(e){ toLogin(); }
+})();
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
