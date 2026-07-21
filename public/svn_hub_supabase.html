@@ -8665,7 +8665,39 @@ function snEnsureBucketShape(bucket){
   bucket.panorama = snMigrarPanorama(bucket.panorama);
   if(!bucket.indices) bucket.indices = snIndicesVazios();
   Object.values(bucket.clientes||{}).forEach(c=>{ c.oportunidade = snMigrarOportunidade(c.oportunidade); });
+  snMergeClientesDuplicados(bucket);
   return bucket;
+}
+// Une entradas do mesmo cliente que ficaram em chaves diferentes (bug antigo: XP e MB
+// usavam o número de conta de cada PDF como chave, mas contas XP e MB são números
+// diferentes pro mesmo cliente). Resolve pela chave canônica em S.clientes (código,
+// senão nome) e funde xp/mb/xpGlobal/oportunidade na entrada que sobra.
+function snMergeClientesDuplicados(bucket){
+  const clientes = bucket.clientes || {};
+  const grupos = {};
+  Object.keys(clientes).forEach(chave=>{
+    const c = clientes[chave];
+    const base = S.clientes.find(x=>x.codigo===chave) || S.clientes.find(x=>(x.nome||'').trim().toLowerCase()===(c.nome||'').trim().toLowerCase() && (c.nome||'').trim());
+    const canonica = (base && base.codigo) || chave;
+    (grupos[canonica] = grupos[canonica] || []).push(chave);
+  });
+  let changed = false;
+  Object.entries(grupos).forEach(([canonica, chaves])=>{
+    if(chaves.length===1 && chaves[0]===canonica) return;
+    const destino = clientes[canonica] || clientes[chaves[0]];
+    chaves.forEach(chave=>{
+      const c = clientes[chave];
+      if(c===destino) return;
+      ['xp','mb','xpGlobal'].forEach(campo=>{ if(c[campo] && !destino[campo]) destino[campo] = c[campo]; });
+      if((!destino.oportunidade || !(destino.oportunidade.titulo||destino.oportunidade.sub)) && c.oportunidade) destino.oportunidade = c.oportunidade;
+      delete clientes[chave];
+      changed = true;
+    });
+    destino.codigo = canonica;
+    clientes[canonica] = destino;
+    changed = true;
+  });
+  if(changed) save();
 }
 
 let snMesSelecionado = null;
@@ -8978,10 +9010,11 @@ async function snHandlePdf(file, tipo){
       const mesKey = dados.dataReferencia ? snMesKeyFromData(dados.dataReferencia) : snMesSelecionado;
       const cliente = snResolveCliente(dados.conta, '');
       if(cliente){
-        snIngest(mesKey, dados.conta, cliente.nome, 'xp', dados);
+        const chave = cliente.codigo || dados.conta;
+        snIngest(mesKey, chave, cliente.nome, 'xp', dados);
         snSetStatus(`XP importado — ${cliente.nome} (${dados.conta}), patrimônio ${fmt(dados.patrimonio)}.`, false);
       } else {
-        snAbrirModalCliente(dados.conta, '', (c)=>{ snIngest(mesKey, dados.conta, c.nome, 'xp', dados); });
+        snAbrirModalCliente(dados.conta, '', (c)=>{ snIngest(mesKey, c.codigo || dados.conta, c.nome, 'xp', dados); });
       }
     } else {
       const dados = snParseMBReport(lines);
@@ -8989,10 +9022,11 @@ async function snHandlePdf(file, tipo){
       const mesKey = dados.mesKeyRelatorio || snMesSelecionado;
       const cliente = snResolveCliente(dados.conta, dados.nome);
       if(cliente){
-        snIngest(mesKey, dados.conta, cliente.nome, 'mb', dados);
+        const chave = cliente.codigo || dados.conta;
+        snIngest(mesKey, chave, cliente.nome, 'mb', dados);
         snSetStatus(`MB importado — ${cliente.nome} (${dados.conta}), patrimônio ${fmt(dados.patrimonio)}.`, false);
       } else {
-        snAbrirModalCliente(dados.conta, dados.nome, (c)=>{ snIngest(mesKey, dados.conta, c.nome, 'mb', dados); });
+        snAbrirModalCliente(dados.conta, dados.nome, (c)=>{ snIngest(mesKey, c.codigo || dados.conta, c.nome, 'mb', dados); });
       }
     }
   }catch(err){
