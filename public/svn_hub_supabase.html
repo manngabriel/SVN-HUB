@@ -189,6 +189,17 @@ th.num{text-align:right;}
 #view-supernova #snPresentView .nav-dot{width:8px; height:8px; border-radius:50%; background:var(--line-dark); cursor:pointer;}
 #view-supernova #snPresentView .nav-dot.active{background:var(--amber);}
 #view-supernova #snPresentView .exit-present{position:absolute; top:22px; right:30px; z-index:5;}
+#view-supernova #snPresentView .btn.ghost.ondark{border-color:var(--line-dark); color:var(--cream-on-dark);}
+#view-supernova #snPresentView .btn.ghost.ondark:hover{background:var(--line-dark);}
+#view-supernova #snPresentView .sn-present-modes{position:absolute; top:22px; left:30px; z-index:5; display:flex; gap:6px;}
+#view-supernova #snPresentView .sn-mode-btn.active{background:var(--amber); border-color:var(--amber); color:#fff;}
+#view-supernova #snPresentView.sn-edit .ed{cursor:text; border-radius:5px; transition:box-shadow .15s ease, background .15s ease;}
+#view-supernova #snPresentView.sn-edit .ed:hover{box-shadow:0 0 0 1px var(--line-dark);}
+#view-supernova #snPresentView.sn-edit .ed:focus{outline:none; box-shadow:0 0 0 2px var(--amber); background:rgba(190,127,73,.12);}
+#view-supernova #snPresentView .slide.bg-cream .ed:hover, #view-supernova #snPresentView .slide.bg-cream2 .ed:hover{box-shadow:0 0 0 1px var(--line);}
+#view-supernova #snPresentView .sn-pano-slide-item .ed[data-pano-field="corpo"]{color:var(--ink-soft);}
+#view-supernova #snPresentView .slide.bg-charcoal .sn-pano-slide-item{border-bottom-color:var(--line-dark);}
+#view-supernova #snPresentView .sn-pano-slide-item{border-bottom:1px solid var(--line);}
 
 /* ---------- FERRAMENTA: COMPARADOR FINANCIAMENTO × CONSÓRCIO (isolado) ---------- */
 #view-cet-fin{
@@ -4898,6 +4909,10 @@ th.num{text-align:right;}
     <!-- SUPERNOVA · APRESENTAÇÃO -->
     <div id="snPresentView">
       <button class="btn ghost ondark exit-present" onclick="snExitPresent()">✕ Sair da apresentação</button>
+      <div class="sn-present-modes">
+        <button class="btn sm ghost ondark sn-mode-btn" data-snmode="edit" onclick="snApplyPresentMode('edit')">✎ Editar</button>
+        <button class="btn sm ghost ondark sn-mode-btn" data-snmode="present" onclick="snApplyPresentMode('present')">▶ Apresentar</button>
+      </div>
       <div class="present-stage">
         <div class="slide bg-charcoal" data-slide="0">
           <span class="eyebrow">Relatório de Investimentos</span>
@@ -4907,7 +4922,7 @@ th.num{text-align:right;}
         </div>
         <div class="slide bg-cream" data-slide="1">
           <span class="eyebrow">Panorama</span><h2 class="title">O que aconteceu no mês</h2>
-          <div class="sub" id="snSlidePanorama"></div>
+          <div id="snSlidePanorama" style="max-width:760px;"></div>
         </div>
         <div class="slide bg-cream2" data-slide="2">
           <span class="eyebrow">Índices do mês</span><h2 class="title">Brasil &amp; EUA</h2>
@@ -4931,7 +4946,7 @@ th.num{text-align:right;}
         </div>
         <div class="slide bg-charcoal" data-slide="7">
           <span class="eyebrow">Oportunidade</span><h2 class="title">Sugestão para o cliente</h2>
-          <div class="sub" id="snSlideOportunidade"></div>
+          <div id="snSlideOportunidade" style="max-width:820px;"></div>
         </div>
       </div>
       <div class="present-nav">
@@ -8621,6 +8636,37 @@ function snIndicesVazios(){
   SN_INDICES.forEach(([k])=>{ o[k] = {mes:0, ano:0}; });
   return o;
 }
+function snPanoramaVazio(){ return []; }
+function snOportunidadeVazia(){
+  return {titulo:'', sub:'', rating:'', prazo:'', pagamentos:'', taxa1:'', taxa2:'',
+    porques:[{titulo:'',corpo:''},{titulo:'',corpo:''},{titulo:'',corpo:''}]};
+}
+function snMigrarPanorama(p){
+  if(Array.isArray(p)) return p;
+  if(typeof p === 'string' && p.trim()) return [{tag:'', titulo:'', corpo:p}];
+  return [];
+}
+function snMigrarOportunidade(o){
+  if(o && typeof o === 'object' && !Array.isArray(o)){
+    if(!Array.isArray(o.porques) || o.porques.length<3){
+      const base = [{titulo:'',corpo:''},{titulo:'',corpo:''},{titulo:'',corpo:''}];
+      (o.porques||[]).forEach((p,i)=>{ if(base[i]) base[i]=p; });
+      o.porques = base;
+    }
+    return o;
+  }
+  const base = snOportunidadeVazia();
+  if(typeof o === 'string' && o.trim()) base.sub = o;
+  return base;
+}
+// Normaliza panorama/oportunidade de um mês já carregado (migra formato antigo em texto livre).
+function snEnsureBucketShape(bucket){
+  if(!bucket) return bucket;
+  bucket.panorama = snMigrarPanorama(bucket.panorama);
+  if(!bucket.indices) bucket.indices = snIndicesVazios();
+  Object.values(bucket.clientes||{}).forEach(c=>{ c.oportunidade = snMigrarOportunidade(c.oportunidade); });
+  return bucket;
+}
 
 let snMesSelecionado = null;
 let snClienteSelecionado = null;
@@ -8635,7 +8681,7 @@ function snPatrimonioTotal(c){
 // ---------------- Navegação (mês / lista / detalhe) ----------------
 function snNovoMes(){
   const hoje = mesHoje();
-  if(!S.supernova[hoje]) S.supernova[hoje] = {panorama:'', indices: snIndicesVazios(), clientes:{}};
+  if(!S.supernova[hoje]) S.supernova[hoje] = {panorama: snPanoramaVazio(), indices: snIndicesVazios(), clientes:{}};
   snMesSelecionado = hoje;
   save(); renderSupernova();
 }
@@ -8670,7 +8716,7 @@ function renderSupernova(){
     : '<span class="empty">Nenhum mês ainda — clique em "+ Mês".</span>';
   const uploadCard = document.getElementById('snUploadCard');
   if(uploadCard) uploadCard.style.display = snMesSelecionado ? '' : 'none';
-  const bucket = snMesSelecionado ? S.supernova[snMesSelecionado] : null;
+  const bucket = snMesSelecionado ? snEnsureBucketShape(S.supernova[snMesSelecionado]) : null;
   if(snClienteSelecionado && bucket && bucket.clientes[snClienteSelecionado]){
     document.getElementById('snListaMes').style.display = 'none';
     document.getElementById('snDetalheCliente').style.display = '';
@@ -8762,9 +8808,9 @@ function snConfirmarModalCliente(){
   if(cb && cliente) cb(cliente);
 }
 function snIngest(mesKey, codigo, nome, tipo, dados){
-  if(!S.supernova[mesKey]) S.supernova[mesKey] = {panorama:'', indices: snIndicesVazios(), clientes:{}};
+  if(!S.supernova[mesKey]) S.supernova[mesKey] = {panorama: snPanoramaVazio(), indices: snIndicesVazios(), clientes:{}};
   const bucket = S.supernova[mesKey].clientes;
-  if(!bucket[codigo]) bucket[codigo] = {codigo, nome, xp:null, mb:null, xpGlobal:null, oportunidade:'', atualizadoEm:Date.now()};
+  if(!bucket[codigo]) bucket[codigo] = {codigo, nome, xp:null, mb:null, xpGlobal:null, oportunidade: snOportunidadeVazia(), atualizadoEm:Date.now()};
   bucket[codigo].nome = bucket[codigo].nome || nome;
   bucket[codigo][tipo] = dados;
   bucket[codigo].atualizadoEm = Date.now();
@@ -9079,9 +9125,34 @@ function snRenderBenchmark(c){
     <div class="sn-bench-val">${v.toFixed(2)}%</div>
   </div>`).join('');
 }
-function snUpdPanorama(mesKey, val){
-  if(!S.supernova[mesKey]) return;
-  S.supernova[mesKey].panorama = val;
+function snRenderPanoramaEditor(mesKey){
+  const bucket = S.supernova[mesKey];
+  const itens = (bucket && bucket.panorama) || [];
+  const row = (it,i) => `<div style="border:1px solid var(--line); border-radius:10px; padding:10px 12px; margin-bottom:8px;">
+    <div style="display:flex; gap:8px; align-items:center; margin-bottom:6px;">
+      <input type="text" placeholder="TAG (ex: FED, BRASIL)" value="${esc(it.tag||'')}" style="width:170px; font-size:11px; text-transform:uppercase; font-weight:700; color:var(--amber);" onchange="snUpdPanoramaItem('${mesKey}',${i},'tag',this.value)">
+      <input type="text" placeholder="Título" value="${esc(it.titulo||'')}" style="flex:1; font-weight:600;" onchange="snUpdPanoramaItem('${mesKey}',${i},'titulo',this.value)">
+      <button class="btn ghost sm" onclick="snRemPanoramaItem('${mesKey}',${i})" title="Remover">✕</button>
+    </div>
+    <textarea class="sn-freetext" style="min-height:56px;" onblur="snUpdPanoramaItem('${mesKey}',${i},'corpo',this.value)">${esc(it.corpo||'')}</textarea>
+  </div>`;
+  return (itens.length ? itens.map(row).join('') : '<div class="empty" style="margin-bottom:8px;">Nenhum item ainda.</div>')
+    + `<button class="btn ghost sm" onclick="snAddPanoramaItem('${mesKey}')">+ Item de panorama</button>`;
+}
+function snAddPanoramaItem(mesKey){
+  const bucket = S.supernova[mesKey]; if(!bucket) return;
+  if(!Array.isArray(bucket.panorama)) bucket.panorama = [];
+  bucket.panorama.push({tag:'', titulo:'', corpo:''});
+  save(); renderSupernovaDetalhe(mesKey, snClienteSelecionado);
+}
+function snRemPanoramaItem(mesKey, i){
+  const bucket = S.supernova[mesKey]; if(!bucket || !bucket.panorama) return;
+  bucket.panorama.splice(i,1);
+  save(); renderSupernovaDetalhe(mesKey, snClienteSelecionado);
+}
+function snUpdPanoramaItem(mesKey, i, campo, val){
+  const bucket = S.supernova[mesKey]; if(!bucket || !bucket.panorama[i]) return;
+  bucket.panorama[i][campo] = val;
   save();
 }
 function snUpdIndice(mesKey, chave, campo, val){
@@ -9108,10 +9179,42 @@ function snRenderIndicesEditor(mesKey){
     ${SN_INDICES.slice(6).map(linha).join('')}
   </table>`;
 }
-function snUpdOportunidade(mesKey, codigo, val){
-  const c = S.supernova[mesKey] && S.supernova[mesKey].clientes[codigo];
-  if(!c) return;
-  c.oportunidade = val;
+function snRenderOportunidadeEditor(mesKey, codigo){
+  const c = S.supernova[mesKey].clientes[codigo];
+  const o = c.oportunidade || snOportunidadeVazia();
+  const campo = (label,key,ph) => `<div class="field"><label>${label}</label><input type="text" value="${esc(o[key]||'')}" placeholder="${esc(ph||'')}" onchange="snUpdOportunidadeCampo('${mesKey}','${codigo}','${key}',this.value)"></div>`;
+  const porqueRow = (p,i) => `<div style="margin-bottom:10px;">
+    <div class="field"><label>Porquê ${i+1} — título</label><input type="text" value="${esc(p.titulo||'')}" onchange="snUpdOportunidadePorque('${mesKey}','${codigo}',${i},'titulo',this.value)"></div>
+    <div class="field" style="margin-top:4px;"><label>Porquê ${i+1} — texto</label><textarea class="sn-freetext" style="min-height:50px;" onblur="snUpdOportunidadePorque('${mesKey}','${codigo}',${i},'corpo',this.value)">${esc(p.corpo||'')}</textarea></div>
+  </div>`;
+  return `
+    <div class="grid c2">
+      ${campo('Título da oportunidade','titulo','Ex: Debênture Energia de Reserva')}
+      ${campo('Subtítulo','sub','Ex: uma ideia pra carteira do cliente')}
+    </div>
+    <div class="grid c3" style="margin-top:8px;">
+      ${campo('Rating','rating','AAA')}
+      ${campo('Prazo','prazo','3 anos')}
+      ${campo('Pagamentos','pagamentos','Mensais')}
+    </div>
+    <div class="grid c2" style="margin-top:8px;">
+      ${campo('Taxa · opção 1','taxa1','DI 04/29 + 2,00%')}
+      ${campo('Taxa · opção 2','taxa2','CDI + 2,00%')}
+    </div>
+    <div style="margin-top:12px;">${(o.porques||[]).map(porqueRow).join('')}</div>
+  `;
+}
+function snUpdOportunidadeCampo(mesKey, codigo, campo, val){
+  const c = S.supernova[mesKey] && S.supernova[mesKey].clientes[codigo]; if(!c) return;
+  if(!c.oportunidade) c.oportunidade = snOportunidadeVazia();
+  c.oportunidade[campo] = val;
+  save();
+}
+function snUpdOportunidadePorque(mesKey, codigo, i, campo, val){
+  const c = S.supernova[mesKey] && S.supernova[mesKey].clientes[codigo]; if(!c) return;
+  if(!c.oportunidade) c.oportunidade = snOportunidadeVazia();
+  if(!c.oportunidade.porques[i]) c.oportunidade.porques[i] = {titulo:'',corpo:''};
+  c.oportunidade.porques[i][campo] = val;
   save();
 }
 function snUpdXpGlobalCampo(mesKey, codigo, campo, val){
@@ -9146,8 +9249,8 @@ function renderSupernovaDetalhe(mesKey, codigo){
 
     <div class="card">
       <div class="eyebrow">Panorama do mês</div>
-      <div class="desc" style="margin-bottom:8px;">Comentário macro — compartilhado por todos os clientes desse mês. Cole aqui (Ctrl+V) quando montar o relatório.</div>
-      <textarea class="sn-freetext" onblur="snUpdPanorama('${mesKey}', this.value)">${esc(bucket.panorama||'')}</textarea>
+      <div class="desc" style="margin-bottom:8px;">Itens macro (tag + título + texto) — compartilhado por todos os clientes desse mês.</div>
+      ${snRenderPanoramaEditor(mesKey)}
     </div>
 
     <div class="card">
@@ -9198,8 +9301,8 @@ function renderSupernovaDetalhe(mesKey, codigo){
 
     <div class="card">
       <div class="eyebrow">Oportunidade</div>
-      <div class="desc" style="margin-bottom:8px;">Pitch de produto específico pro cliente — cole aqui (Ctrl+V) quando montar o relatório.</div>
-      <textarea class="sn-freetext" onblur="snUpdOportunidade('${mesKey}','${codigo}', this.value)">${esc(c.oportunidade||'')}</textarea>
+      <div class="desc" style="margin-bottom:8px;">Pitch de produto estruturado — específico pra este cliente.</div>
+      ${snRenderOportunidadeEditor(mesKey, codigo)}
     </div>
   `;
 }
@@ -9255,26 +9358,102 @@ function snGoToSlide(n){
   });
   snRenderNavDots();
 }
+function snRenderPanoramaSlide(mesKey){
+  const bucket = S.supernova[mesKey];
+  const itens = (bucket && bucket.panorama) || [];
+  if(!itens.length) return '<div class="empty">Sem panorama registrado para este mês.</div>';
+  return itens.map((it,i)=>`<div class="sn-pano-slide-item" data-pano-i="${i}" style="display:flex; gap:16px; padding:12px 0;">
+    <div class="ed" data-pano-field="tag" style="width:110px; flex-shrink:0; font-size:11px; letter-spacing:.08em; font-weight:700; color:var(--amber); text-transform:uppercase; padding-top:2px;">${esc(it.tag||'')}</div>
+    <div style="flex:1;">
+      <div class="ed" data-pano-field="titulo" style="font-weight:700; font-size:14.5px; margin-bottom:3px;">${esc(it.titulo||'')}</div>
+      <div class="ed" data-pano-field="corpo" style="font-size:13px; line-height:1.5; white-space:pre-wrap;">${esc(it.corpo||'')}</div>
+    </div>
+  </div>`).join('');
+}
+function snRenderOportunidadeSlide(mesKey, codigo){
+  const c = S.supernova[mesKey].clientes[codigo];
+  const o = c.oportunidade || snOportunidadeVazia();
+  const fact = (label,key) => `<div><div style="font-size:10px; letter-spacing:.06em; color:var(--amber-soft); font-weight:700; margin-bottom:3px;">${label}</div><div class="ed" data-opp-field="${key}" style="font-weight:700; font-size:14px;">${esc(o[key]||'—')}</div></div>`;
+  const porqueCard = (p,i) => `<div>
+    <div class="ed" data-opp-field="titulo" data-opp-porque="${i}" style="font-weight:700; font-size:13px; margin-bottom:4px; color:var(--amber-soft);">${esc(p.titulo||'')}</div>
+    <div class="ed" data-opp-field="corpo" data-opp-porque="${i}" style="font-size:11.5px; color:#cbd2e6; line-height:1.5; white-space:pre-wrap;">${esc(p.corpo||'')}</div>
+  </div>`;
+  return `
+    <div class="ed" data-opp-field="titulo" style="font-size:22px; font-weight:800; margin-bottom:4px;">${esc(o.titulo||'Sem título ainda')}</div>
+    <div class="ed" data-opp-field="sub" style="font-size:13px; color:#cbd2e6; margin-bottom:22px;">${esc(o.sub||'')}</div>
+    <div style="display:grid; grid-template-columns:repeat(5,1fr); gap:14px; margin-bottom:22px; border-top:1px solid rgba(255,255,255,.14); padding-top:18px;">
+      ${fact('RATING','rating')}${fact('PRAZO','prazo')}${fact('PAGAMENTOS','pagamentos')}${fact('TAXA · OPÇÃO 1','taxa1')}${fact('TAXA · OPÇÃO 2','taxa2')}
+    </div>
+    <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:18px; border-top:1px solid rgba(255,255,255,.14); padding-top:18px;">
+      ${(o.porques||[]).map(porqueCard).join('')}
+    </div>
+  `;
+}
 function snEnterPresent(mesKey, codigo){
   const bucket = S.supernova[mesKey];
   const c = bucket && bucket.clientes[codigo];
   if(!c) return;
+  const view = document.getElementById('snPresentView');
+  view.dataset.mes = mesKey;
+  view.dataset.codigo = codigo;
   document.getElementById('snSlideNome').textContent = c.nome || c.codigo;
   document.getElementById('snSlideCodigoMes').textContent = `Código ${c.codigo} · mês ${snMesLabel(mesKey)}`;
   document.getElementById('snSlideData').textContent = new Date().toLocaleDateString('pt-BR',{day:'2-digit',month:'long',year:'numeric'});
-  document.getElementById('snSlidePanorama').textContent = bucket.panorama || 'Sem panorama registrado para este mês.';
+  document.getElementById('snSlidePanorama').innerHTML = snRenderPanoramaSlide(mesKey);
   document.getElementById('snSlideIndices').innerHTML = snRenderIndicesSlide(mesKey);
   document.getElementById('snSlideConsolidado').innerHTML = snRenderConsolidadoSlide(c);
   document.getElementById('snSlideAlocacao').innerHTML = snRenderAlocacao(c);
   document.getElementById('snSlideBenchmark').innerHTML = snRenderBenchmark(c);
   document.getElementById('snSlideDestaques').innerHTML = snRenderDestaques(c);
-  document.getElementById('snSlideOportunidade').textContent = c.oportunidade || 'Sem oportunidade registrada para este cliente.';
-  document.getElementById('snPresentView').style.display = 'flex';
+  document.getElementById('snSlideOportunidade').innerHTML = snRenderOportunidadeSlide(mesKey, codigo);
+  view.style.display = 'flex';
+  snApplyPresentMode('edit');
   snGoToSlide(0);
 }
 function snExitPresent(){
   const el = document.getElementById('snPresentView');
   if(el) el.style.display = 'none';
+}
+// ---------------- Apresentação: edição in-place (Panorama e Oportunidade) ----------------
+function snApplyPresentMode(mode){
+  const view = document.getElementById('snPresentView');
+  if(!view) return;
+  const edit = mode === 'edit';
+  view.classList.toggle('sn-edit', edit);
+  view.querySelectorAll('.sn-mode-btn').forEach(b=> b.classList.toggle('active', b.dataset.snmode===mode));
+  view.querySelectorAll('.ed').forEach(el=>{
+    el.contentEditable = edit ? 'true' : 'false';
+    if(edit){ el.setAttribute('spellcheck','false'); snBindEditable(el); }
+  });
+}
+function snBindEditable(el){
+  if(el.dataset.snBound) return;
+  el.dataset.snBound = '1';
+  el.addEventListener('blur', ()=>snSaveEditableField(el));
+}
+function snSaveEditableField(el){
+  const view = document.getElementById('snPresentView');
+  const mesKey = view.dataset.mes, codigo = view.dataset.codigo;
+  const bucket = S.supernova[mesKey];
+  if(!bucket) return;
+  const val = el.textContent;
+  if(el.dataset.panoField){
+    const container = el.closest('[data-pano-i]');
+    const item = container && bucket.panorama[Number(container.dataset.panoI)];
+    if(item) item[el.dataset.panoField] = val; else return;
+  } else if(el.dataset.oppField){
+    const c = bucket.clientes[codigo];
+    if(!c) return;
+    if(!c.oportunidade) c.oportunidade = snOportunidadeVazia();
+    if(el.hasAttribute('data-opp-porque')){
+      const i = Number(el.dataset.oppPorque);
+      if(!c.oportunidade.porques[i]) c.oportunidade.porques[i] = {titulo:'',corpo:''};
+      c.oportunidade.porques[i][el.dataset.oppField] = val;
+    } else {
+      c.oportunidade[el.dataset.oppField] = val;
+    }
+  } else return;
+  save();
 }
 document.addEventListener('keydown', e=>{
   const el = document.getElementById('snPresentView');
