@@ -2614,7 +2614,6 @@ th.num{text-align:right;}
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.0.4/tesseract.min.js"></script>
 </head>
 <body>
 <div class="app">
@@ -4920,7 +4919,7 @@ th.num{text-align:right;}
         <button class="btn solid" onclick="document.getElementById('snFileBatch').click()">📄 Importar relatórios (XP + MB)</button>
         <input type="file" id="snFileBatch" accept="application/pdf" multiple style="display:none">
       </div>
-      <div class="sn-paste" id="snPasteZone" contenteditable="true" style="margin-top:12px;">Cole aqui o print da XP Global (clique e Ctrl+V)</div>
+      <div class="sn-paste" id="snPasteZone" contenteditable="true" style="margin-top:12px;">XP Global: selecione a tabela na tela da XP, Ctrl+C e cole aqui como TEXTO (não print). Cada linha vira um fundo, com valor exato.</div>
       <div class="import-status" id="snImportStatus" style="margin-top:8px; font-size:12px;"></div>
     </div>
 
@@ -9283,111 +9282,91 @@ document.getElementById('snFileBatch').addEventListener('change', async function
     snAbrirModalCliente(itens[0].dados.conta, dicaNome, finalizarLote);
   }
 });
-document.getElementById('snPasteZone').addEventListener('paste', function(e){
-  const items = (e.clipboardData || window.clipboardData).items;
-  let imgFile = null;
-  for(const item of items){ if(item.type && item.type.startsWith('image/')){ imgFile = item.getAsFile(); break; } }
-  if(!imgFile){ snSetStatus('Nenhuma imagem encontrada no que foi colado.', true); return; }
+// XP Global agora entra por TEXTO colado (não print/OCR): você seleciona a tabela na tela da XP,
+// Ctrl+C e cola aqui. Texto é exato — valores nunca distorcem. Se colar imagem, avisa pra colar texto.
+document.getElementById('snPasteZone').addEventListener('paste', async function(e){
+  const cd = e.clipboardData || window.clipboardData;
+  const texto = (cd.getData('text/plain') || '').trim();
+  if(!texto){
+    // sem texto no clipboard — provavelmente colaram uma imagem
+    let temImg = false;
+    for(const it of (cd.items||[])){ if(it.type && it.type.startsWith('image/')) temImg = true; }
+    e.preventDefault();
+    snSetStatus(temImg
+      ? 'Cole os dados como TEXTO: selecione a tabela na tela da XP Global e Ctrl+C (não print).'
+      : 'Nada de texto no que foi colado.', true);
+    return;
+  }
   e.preventDefault();
   if(!snMesSelecionado) snNovoMes();
   const mesKey = snMesSelecionado;
-  const r = new FileReader();
-  r.onload = async () => {
-    const imagemB64 = r.result;
-    snSetStatus('Lendo o print (OCR)...', false);
-    const extraido = await snExtrairXpGlobal(imagemB64);
-    // Se já tem uma ficha de cliente aberta, o print é desse cliente: anexa direto, sem abrir outro.
-    const bucket = S.supernova[mesKey] && S.supernova[mesKey].clientes;
-    if(snClienteSelecionado && bucket && bucket[snClienteSelecionado]){
-      const alvo = bucket[snClienteSelecionado];
-      const cambio = (alvo.xpGlobal && alvo.xpGlobal.cambio) || await snFetchUSDBRL();
-      snIngest(mesKey, snClienteSelecionado, alvo.nome, 'xpGlobal', {
-        cambio,
-        ativos: (extraido && extraido.ativos) ? extraido.ativos : []
-      });
-      snAbrirCliente(mesKey, snClienteSelecionado);
-      const nFundos = (extraido && extraido.ativos) ? extraido.ativos.length : 0;
-      snSetStatus(`XP Global: ${nFundos} fundo(s) lido(s)`+(cambio?` · câmbio ${cambio}.`:' · câmbio não obtido, clique ↻ na ficha.'), !nFundos);
+  const ativos = snParseFundos(texto.split(/\r?\n/).map(l=>l.trim()).filter(Boolean));
+  if(!ativos.length){
+    snSetStatus('Não achei fundos no texto. Cole as linhas da tabela (nome + valor US$).', true);
+    return;
+  }
+  await snAplicarXpGlobal(mesKey, ativos);
+});
+// Anexa os fundos ao cliente aberto; se nenhuma ficha estiver aberta, abre o modal pra escolher.
+async function snAplicarXpGlobal(mesKey, ativos){
+  const bucket = S.supernova[mesKey] && S.supernova[mesKey].clientes;
+  if(snClienteSelecionado && bucket && bucket[snClienteSelecionado]){
+    const alvo = bucket[snClienteSelecionado];
+    const cambio = (alvo.xpGlobal && alvo.xpGlobal.cambio) || await snFetchUSDBRL();
+    snIngest(mesKey, snClienteSelecionado, alvo.nome, 'xpGlobal', {cambio, ativos});
+    snAbrirCliente(mesKey, snClienteSelecionado);
+    snSetStatus(`XP Global: ${ativos.length} fundo(s)`+(cambio?` · câmbio ${cambio}.`:' · câmbio não obtido, clique ↻ na ficha.'), false);
+  } else {
+    snAbrirModalXpGlobal(mesKey, ativos);
+  }
+}
+// Parser de TEXTO da carteira XP Global. Por bloco, robusto a dois formatos de cópia:
+//  (a) linha inteira por fundo: "OAACZ Oaktree Global Credit Fund (R)  US$ 2.846,10  +0,71%"
+//  (b) uma célula por linha: nome numa linha, cada valor US$ na linha seguinte.
+// Regras: linha de CATEGORIA (Mutual Funds, Cash, Bonds...) ou o próximo nome fecham o bloco;
+// valor do fundo = ÚLTIMA coluna monetária (Posição). QTD e Rent.(US$) sem cifrão são ignorados.
+function snParseFundos(linhas){
+  const CATS = /^(?:[\d.,]+%?\s*)?(mutual funds|fundos|cash|saldo|ucits|etfs?|structured notes|notas estruturadas|certificate of deposit|cd\b|certificado de dep|treasury|tesouro|bonds|renda fixa|equities|renda vari)\b\s*$/i;
+  const HEADER = /^(ativo|qtd|pre[çc]o|valor aplicado|rent\.?|posi[çc][ãa]o|a[çc][õo]es)\b/i;
+  const MOEDA = /(?:US?\$|U\$|R\$|\$)/i;
+  const PCT = /-?[\d.,]+\s?%/;
+  const curTokG = /(?:US?\$|U\$|R\$|\$)\s?-?[\d.,]+/gi;
+  const funds = [];
+  let atual = null;   // {nome, valores:[], pct}
+  const fechar = () => {
+    if(atual && atual.nome && atual.valores.length){
+      const v = atual.valores[atual.valores.length-1];   // Posição = última coluna monetária
+      if(v>0) funds.push({ nome: atual.nome.replace(/\s+/g,' ').trim(), valorUSD:v, rentabMes: atual.pct||0 });
+    }
+    atual = null;
+  };
+  linhas.forEach(l=>{
+    if(HEADER.test(l)) return;
+    if(CATS.test(l)){ fechar(); return; }
+    const temVal = MOEDA.test(l) && /\d/.test(l);
+    const temLetra = /[A-Za-zÀ-ÿ]{2,}/.test(l);
+    if(temLetra && !temVal){
+      // nome/ticker (sem valor) — abre ou continua o bloco
+      if(atual && !atual.valores.length) atual.nome = (atual.nome + ' ' + l).trim();
+      else { fechar(); atual = {nome:l, valores:[], pct:0}; }
       return;
     }
-    snSetStatus(extraido ? 'Print lido — confira os valores antes de salvar.' : 'Não consegui ler os valores automaticamente — preencha à mão.', !extraido);
-    snAbrirModalXpGlobal(mesKey, imagemB64, extraido);
-  };
-  r.readAsDataURL(imgFile);
-});
-// Lê o print da XP Global via OCR (Tesseract, roda no navegador, sem servidor) e tenta achar
-// patrimônio + ganhos em R$ no texto reconstruído. Best-effort: OCR em screenshot de app não
-// tem a confiabilidade da extração de texto de PDF (camada de texto real) — por isso os campos
-// continuam editáveis no modal, o OCR só poupa o trabalho de digitar do zero quando acerta.
-// Heurística: o maior valor em R$ da tela costuma ser o patrimônio total (maior que qualquer
-// ganho isolado do período); os R$ seguintes, na ordem em que aparecem, viram os palpites de
-// ganho no mês e no ano.
-// Parser do print "Investimentos internacionais" da XP Global (categorias Mutual Funds, Cash,
-// UCITS ETFs, Bonds, Equities...). A tabela é larga: o OCR quase sempre quebra a linha de cada
-// fundo em VÁRIAS linhas (um valor por linha), então não dá pra contar "US$ por linha". Parser por
-// BLOCO: uma linha de nome (ticker/fundo) abre um bloco; as linhas de valor US$ seguintes entram
-// no bloco; uma linha de CATEGORIA (Mutual Funds, Cash, Bonds...) ou o próximo nome fecham o bloco.
-// Valor do fundo = maior US$ do bloco (≈ Posição / valor de mercado). QTD e Rent.(US$) não têm
-// cifrão, então são ignorados por não terem marcador de moeda.
-async function snExtrairXpGlobal(imagemB64){
-  if(typeof Tesseract==='undefined'){ console.warn('Tesseract.js não carregou'); return null; }
-  try{
-    const resultado = await Tesseract.recognize(imagemB64, 'por');
-    const text = resultado.data.text || '';
-    const linhas = text.split('\n').map(l=>l.trim()).filter(Boolean);
-    const CATS = /^(?:[\d.,]+%?\s*)?(mutual funds|fundos|cash|saldo|ucits|etfs?|structured notes|notas estruturadas|certificate of deposit|cd\b|certificado de dep|treasury|tesouro|bonds|renda fixa|equities|renda vari)/i;
-    const HEADER = /^(ativo|qtd|pre[çc]o|valor aplicado|rent\.?|posi[çc][ãa]o|a[çc][õo]es)\b/i;
-    const MOEDA = /(?:US?\$|U\$|R\$|USS|\bUS\b|\$)/i;   // marcador de moeda (tolera OCR do cifrão)
-    const PCT = /-?[\d.,]+\s?%/;
-    const curTokG = /(?:US?\$|U\$|R\$|USS|\$)\s?-?[\d.,]+/gi;
-    const funds = [];
-    let atual = null;   // {nome, valores:[], pct}
-    const fechar = () => {
-      if(atual && atual.nome){
-        const v = atual.valores.length ? Math.max(...atual.valores) : 0;
-        if(v>0) funds.push({ nome: atual.nome.replace(/\s+/g,' ').trim(), valorUSD:v, rentabMes: atual.pct||0 });
+    if(temVal){
+      const leadClean = l.slice(0, l.search(/\d/)).replace(/US?\$|U\$|R\$|\$/gi,'').replace(/[|·•\t]+/g,' ').trim();
+      if(leadClean.length>=2 && /[A-Za-zÀ-ÿ]{2,}/.test(leadClean) && !CATS.test(leadClean) && !HEADER.test(leadClean)){
+        if(!(atual && !atual.valores.length)){ fechar(); atual = {nome:leadClean, valores:[], pct:0}; }
       }
-      atual = null;
-    };
-    linhas.forEach(l=>{
-      if(HEADER.test(l)) return;
-      if(CATS.test(l)){ fechar(); return; }              // seção — fecha fundo anterior; não é fundo
-      const temVal = MOEDA.test(l) && /\d/.test(l);
-      const ehPct = PCT.test(l) && !MOEDA.test(l);
-      const temLetra = /[A-Za-zÀ-ÿ]{2,}/.test(l);
-      // Linha de nome/ticker (texto, sem valor monetário): abre ou continua um bloco.
-      if(temLetra && !temVal && !ehPct){
-        if(atual && !atual.valores.length) atual.nome = (atual.nome + ' ' + l).trim();
-        else { fechar(); atual = {nome:l, valores:[], pct:0}; }
-        return;
-      }
-      // Linha de valor(es) monetário(s): entra no bloco aberto.
-      if(temVal){
-        // se a linha começa com texto (row inteira numa linha só), esse texto é o nome do fundo.
-        // Remove marcador de moeda do começo pra "US$ 144,70" não virar um fundo chamado "US$".
-        const leadClean = l.slice(0, l.search(/\d/)).replace(/US?\$|U\$|R\$|USS|\$/gi,'').replace(/[|·•]/g,' ').trim();
-        if(leadClean.length>=2 && /[A-Za-zÀ-ÿ]{2,}/.test(leadClean) && !CATS.test(leadClean) && !HEADER.test(leadClean)){
-          if(!(atual && !atual.valores.length)){ fechar(); atual = {nome:leadClean, valores:[], pct:0}; }
-        }
-        if(!atual){ return; }
-        const pm = l.match(PCT); if(pm && !atual.pct) atual.pct = snParsePercent(pm[0]);
-        const toks = l.match(curTokG) || [];   // só tokens COM cifrão (exclui QTD e Rent.US$ sem $)
-        toks.forEach(t=>{ const n = scParseMoney(t); if(n>0 && n<1e9) atual.valores.push(n); });
-        return;
-      }
-      // Linha só de porcentagem
-      if(ehPct && atual && !atual.pct) atual.pct = snParsePercent(l.match(PCT)[0]);
-    });
-    fechar();
-    if(!funds.length){
-      // Fallback: nada reconhecido — maior US$ da tela como total, pra revisar na ficha.
-      const any = [...text.matchAll(curTokG)].map(m=>scParseMoney(m[0])).filter(v=>v>0);
-      if(any.length) funds.push({ nome:'Carteira XP Global (revisar nome)', valorUSD: Math.max(...any), rentabMes:0 });
+      if(!atual) return;
+      const pm = l.match(PCT); if(pm && !atual.pct) atual.pct = snParsePercent(pm[0]);
+      (l.match(curTokG) || []).forEach(t=>{ const n = scParseMoney(t); if(n>0 && n<1e12) atual.valores.push(n); });
+      return;
     }
-    return funds.length ? { ativos: funds, ganhoMes:0, ganhoAno:0 } : null;
-  }catch(e){ console.warn('OCR do print da XP Global falhou', e); return null; }
+    if(PCT.test(l) && atual && !atual.pct) atual.pct = snParsePercent(l.match(PCT)[0]);
+  });
+  fechar();
+  return funds;
 }
-function snAbrirModalXpGlobal(mesKey, imagemB64, extraido){
+function snAbrirModalXpGlobal(mesKey, ativos){
   let bg = document.getElementById('snModalBg');
   if(!bg){
     bg = document.createElement('div');
@@ -9397,23 +9376,21 @@ function snAbrirModalXpGlobal(mesKey, imagemB64, extraido){
   }
   const opcoes = S.clientes.map(c=>`<option value="${esc(c.codigo)}">${esc(c.nome||c.codigo)}</option>`).join('');
   bg.innerHTML = `<div class="sn-modal">
-    <h3>Print da XP Global</h3>
-    <div class="desc" style="font-size:12px; margin-bottom:6px;">Só escolha de quem é o print — os fundos e o câmbio entram automático.</div>
+    <h3>XP Global — dados colados</h3>
+    <div class="desc" style="font-size:12px; margin-bottom:6px;">Só escolha de quem são os fundos — o câmbio entra automático.</div>
     <label>Cliente</label>
     <select id="snModalSelect"><option value="">— criar novo —</option>${opcoes}</select>
     <label>Nome (se for criar novo)</label>
     <input type="text" id="snModalNome" placeholder="Nome do cliente">
     <label>Código (opcional — só se souber a conta)</label>
     <input type="text" id="snModalCodigo" placeholder="Código da conta">
-    ${extraido && extraido.ativos && extraido.ativos.length
-      ? `<div class="desc" style="font-size:11.5px; color:var(--ok); margin-top:4px;">${extraido.ativos.length} fundo(s) lido(s) do print — já entram na carteira convertidos.</div>`
-      : '<div class="desc" style="font-size:11.5px; color:var(--warn); margin-top:4px;">OCR não leu os fundos — reveja o print. Você poderá ajustar na ficha.</div>'}
+    <div class="desc" style="font-size:11.5px; color:var(--ok); margin-top:4px;">${(ativos||[]).length} fundo(s) reconhecido(s) — já entram na carteira convertidos.</div>
     <div class="btn-row">
       <button class="btn ghost" onclick="document.getElementById('snModalBg').classList.remove('open')">Cancelar</button>
       <button class="btn solid" onclick="snConfirmarModalXpGlobal('${mesKey}')">Salvar</button>
     </div>
   </div>`;
-  bg.dataset.extraido = JSON.stringify(extraido||{});
+  bg.dataset.ativos = JSON.stringify(ativos||[]);
   bg.classList.add('open');
 }
 async function snConfirmarModalXpGlobal(mesKey){
@@ -9431,7 +9408,7 @@ async function snConfirmarModalXpGlobal(mesKey){
   }
   if(!cliente) return;
   let ativos = [];
-  try{ ativos = (JSON.parse(bg.dataset.extraido||'{}').ativos)||[]; }catch(e){}
+  try{ ativos = JSON.parse(bg.dataset.ativos||'[]')||[]; }catch(e){}
   bg.classList.remove('open');
   const chave = cliente.codigo || cliente.id;
   const cambio = await snFetchUSDBRL();
