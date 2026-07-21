@@ -8809,6 +8809,30 @@ function snSelecionarMes(mesKey){
   snClienteSelecionado = null;
   renderSupernova();
 }
+// Próximo mês (YYYY-MM) a partir de um mesKey
+function snMesSeguinte(mesKey){
+  const [y,m] = (mesKey||mesHoje()).split('-').map(Number);
+  let ano=y, mes=(m||1)+1; if(mes>12){ mes=1; ano++; }
+  return ano+'-'+String(mes).padStart(2,'0');
+}
+// Copia o panorama + índices do mês atual para outro mês (não mexe nos clientes do destino)
+function snCopiarPanorama(origem){
+  if(!origem || !S.supernova[origem]){ alert('Nenhum mês de origem selecionado.'); return; }
+  const alvo = prompt('Copiar o panorama e índices de '+snMesLabel(origem)+' para qual mês? (formato AAAA-MM)', snMesSeguinte(origem));
+  if(!alvo) return;
+  if(!/^\d{4}-\d{2}$/.test(alvo)){ alert('Formato inválido. Use AAAA-MM, ex.: 2026-07.'); return; }
+  if(alvo===origem){ alert('Origem e destino são o mesmo mês.'); return; }
+  const src = snEnsureBucketShape(S.supernova[origem]);
+  if(!S.supernova[alvo]) S.supernova[alvo] = {panorama: snPanoramaVazio(), indices: snIndicesVazios(), clientes:{}};
+  const dst = snEnsureBucketShape(S.supernova[alvo]);
+  const temConteudo = (dst.panorama && dst.panorama.length) || Object.values(dst.indices||{}).some(v=>v && (v.mes||v.ano));
+  if(temConteudo && !confirm(snMesLabel(alvo)+' já tem panorama/índices. Sobrescrever?')) return;
+  dst.panorama = JSON.parse(JSON.stringify(src.panorama||[]));
+  dst.indices  = JSON.parse(JSON.stringify(src.indices||snIndicesVazios()));
+  snMesSelecionado = alvo;
+  save(); renderSupernova();
+  alert('Panorama copiado para '+snMesLabel(alvo)+'. Edite à vontade.');
+}
 function snAbrirCliente(mesKey, codigo){
   snMesSelecionado = mesKey;
   snClienteSelecionado = codigo;
@@ -8868,7 +8892,10 @@ function renderSupernovaMacro(mesKey){
   if(!mesKey || !S.supernova[mesKey]){ el.innerHTML=''; return; }
   el.innerHTML = `
     <div class="card">
-      <div class="eyebrow">Panorama do mês</div>
+      <div style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
+        <div class="eyebrow">Panorama do mês</div>
+        <button class="btn sm ghost" onclick="snCopiarPanorama('${mesKey}')" title="Duplica panorama e índices deste mês para outro, para editar depois">⧉ Copiar para outro mês</button>
+      </div>
       <div class="desc" style="margin-bottom:8px;">Itens macro (tag + título + texto) — preenche uma vez, vale pra todos os clientes desse mês.</div>
       ${snRenderPanoramaEditor(mesKey)}
     </div>
@@ -8901,7 +8928,11 @@ function renderSupernovaLista(){
 function snMesKeyFromData(dataStr){
   const m = String(dataStr||'').match(/(\d{2})\/(\d{2})\/(\d{4})/);
   if(!m) return snMesSelecionado || mesHoje();
-  return m[3]+'-'+m[2];
+  // Relatório é sempre referente ao mês anterior ao de apresentação:
+  // relatório com data de junho é apresentado (e arquivado) no mês 7 (julho).
+  let ano = +m[3], mes = +m[2] + 1;
+  if(mes > 12){ mes = 1; ano++; }
+  return ano+'-'+String(mes).padStart(2,'0');
 }
 function snResolveCliente(codigo, nomeFallback){
   if(codigo){
