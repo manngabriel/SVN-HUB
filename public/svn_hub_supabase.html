@@ -9698,6 +9698,7 @@ function renderSupernovaDetalhe(mesKey, codigo){
         <div><h2>${esc(c.nome||c.codigo)}</h2><div class="desc" style="margin:0;">Código ${esc(c.codigo)} · mês ${snMesLabel(mesKey)}</div></div>
         <div style="display:flex; gap:8px;">
           <button class="btn solid" onclick="snEnterPresent('${mesKey}','${codigo}')">Modo Apresentação →</button>
+          <button class="btn ghost" onclick="snGerarRelatorio('${mesKey}','${codigo}')" title="Abre o relatório consolidado (HTML) em nova aba">📄 Gerar Relatório</button>
           <button class="btn ghost" onclick="snFecharDetalhe()">← Voltar</button>
           <button class="btn danger" onclick="snExcluirCliente('${mesKey}','${codigo}')" title="Excluir consolidado deste cliente neste mês">🗑 Excluir</button>
         </div>
@@ -9879,6 +9880,326 @@ function snEnterPresent(mesKey, codigo){
 function snExitPresent(){
   const el = document.getElementById('snPresentView');
   if(el) el.style.display = 'none';
+}
+
+// ---------------- Relatório Consolidado (documento HTML standalone) ----------------
+// Gera o relatório mensal navy/gold "SVN Connect" a partir do consolidado já ingerido
+// (S.supernova[mesKey].clientes[codigo]) e abre em nova aba para preview/impressão.
+// Só renderiza as seções das custódias que o cliente realmente tem.
+function snRptRefData(mesKey){
+  // mesKey é o mês de arquivamento (mês seguinte ao de referência) — volta 1 mês p/ a data de ref.
+  const [y,m] = (mesKey||'').split('-').map(Number);
+  if(!y||!m) return '';
+  let ano=y, mes=m-1; if(mes<1){ mes=12; ano--; }
+  const ult = new Date(ano, mes, 0).getDate(); // último dia do mês de referência
+  return String(ult).padStart(2,'0')+'/'+String(mes).padStart(2,'0')+'/'+ano;
+}
+function snRptPct(v){ v=+v||0; return (v>=0?'+':'')+v.toFixed(2)+'%'; }
+// soma por classe consolidada (mesma lógica de snRenderAlocacao, mas devolve o mapa cru)
+function snRptPorClasse(c){
+  const map = {};
+  if(c.xp && c.xp.composicao) c.xp.composicao.forEach(e=>{ map[e.nome]=(map[e.nome]||0)+(e.saldoBruto||0); });
+  if(c.mb && c.mb.ativos && c.mb.ativos.length) c.mb.ativos.forEach(a=>{ map[a.estrategia||'Outros']=(map[a.estrategia||'Outros']||0)+(a.saldoBruto||0); });
+  else if(c.mb && c.mb.patrimonio) map['Pós Fixado']=(map['Pós Fixado']||0)+c.mb.patrimonio;
+  if(c.xpGlobal && snXgBRL(c.xpGlobal)) map['Internacional']=(map['Internacional']||0)+snXgBRL(c.xpGlobal);
+  return map;
+}
+// Donut por conic-gradient (spec pede .donut-wrap + conic-gradient, não SVG)
+function snRptDonut(map){
+  const total = Object.values(map).reduce((a,v)=>a+v,0);
+  const entries = Object.entries(map).filter(([,v])=>v>0.001).sort((a,b)=>b[1]-a[1]);
+  if(!total || !entries.length) return '<div class="empty">Sem dados de alocação.</div>';
+  let acc=0; const stops=[];
+  entries.forEach(([k,v])=>{
+    const s=acc/total*360, e=(acc+v)/total*360, col=SN_CLASS_COLORS[k]||'#a39a8f';
+    stops.push(`${col} ${s.toFixed(2)}deg ${e.toFixed(2)}deg`); acc+=v;
+  });
+  const legend = entries.map(([k,v])=>`<div class="leg"><span class="dot" style="background:${SN_CLASS_COLORS[k]||'#a39a8f'}"></span><span class="nm">${esc(k)}</span><b>${(v/total*100).toFixed(1)}%</b></div>`).join('');
+  return `<div class="donut-wrap"><div class="donut" style="background:conic-gradient(${stops.join(', ')})"><div class="hole"><span>${fmt(total)}</span><small>carteira</small></div></div><div class="legend">${legend}</div></div>`;
+}
+function snRptStat(l,v,s,dark){
+  return `<div class="stat-card${dark?' dark':''}"><div class="l">${esc(l)}</div><div class="v">${v}</div>${s?`<div class="s">${s}</div>`:''}</div>`;
+}
+// Destaques: ranking puro por rentab. mês entre TODOS os ativos de TODAS as custódias.
+function snRptDestaques(c, cdiMes){
+  const todos = [
+    ...((c.xp&&c.xp.ativos)||[]).map(a=>({nome:a.nome, r:+a.rentabMes||0, org:'XP'})),
+    ...((c.mb&&c.mb.ativos)||[]).map(a=>({nome:a.nome, r:+a.rentabMes||0, org:'MB'})),
+    ...((c.xpGlobal&&c.xpGlobal.ativos)||[]).map(a=>({nome:a.nome, r:+a.rentabMes||0, org:'Internacional'})),
+  ].filter(a=>isFinite(a.r));
+  if(!todos.length) return '';
+  const ord=[...todos].sort((a,b)=>b.r-a.r);
+  const top=ord.slice(0,5), bot=ord.slice(-5).reverse();
+  const row = a=>{
+    const pc = snPctCDI(a.r, cdiMes||0);
+    const cdi = pc!=null ? `<div class="cdi">${pc.toFixed(0)}% do CDI</div>`:'';
+    return `<div class="dest-row"><div><b>${esc(a.nome||'(não identificado)')}</b><div class="sub">${a.org}</div></div><div class="rt"><div class="${a.r>=0?'up':'down'}">${snRptPct(a.r)}</div>${cdi}</div></div>`;
+  };
+  return `<div class="dest-grid">
+    <div><div class="col-h up">MAIORES RETORNOS</div>${top.map(row).join('')}</div>
+    <div><div class="col-h down">MENORES RETORNOS</div>${bot.map(row).join('')}</div>
+  </div>`;
+}
+function snRptIndices(mesKey){
+  const idx = (S.supernova[mesKey] && S.supernova[mesKey].indices) || {};
+  const has = SN_INDICES.some(([k])=>idx[k] && (idx[k].mes||idx[k].ano));
+  if(!has) return '';
+  const linha = ([k,nome])=>{ const v=idx[k]||{mes:0,ano:0}; return `<tr><td>${esc(nome)}</td><td class="num">${(+v.mes||0).toFixed(2)}%</td><td class="num">${(+v.ano||0).toFixed(2)}%</td></tr>`; };
+  return `<table><thead><tr><th>Índice</th><th class="num">Mês</th><th class="num">Ano</th></tr></thead><tbody>
+    <tr class="grp"><td colspan="3">Brasil</td></tr>${SN_INDICES.slice(0,6).map(linha).join('')}
+    <tr class="grp"><td colspan="3">EUA</td></tr>${SN_INDICES.slice(6).map(linha).join('')}</tbody></table>`;
+}
+function snRptPanorama(mesKey){
+  const itens=(S.supernova[mesKey] && S.supernova[mesKey].panorama)||[];
+  const vis=itens.filter(it=>it.tag||it.titulo||it.corpo);
+  if(!vis.length) return '';
+  return `<div class="pano">${vis.map(it=>`<div class="pano-item"><div class="pano-tag">${esc(it.tag||'')}</div><div><div class="pano-t">${esc(it.titulo||'')}</div><div class="pano-c">${esc(it.corpo||'')}</div></div></div>`).join('')}</div>`;
+}
+function snRptConsolidada(c){
+  const total = snPatrimonioTotal(c);
+  const pct = v=> total>0 ? (v/total*100).toFixed(1)+'%' : '—';
+  const cards = [ snRptStat('Patrimônio total', fmt(total), '', true) ];
+  if(c.xp) cards.push(snRptStat('XP', fmt(c.xp.patrimonio), pct(c.xp.patrimonio)));
+  if(c.mb) cards.push(snRptStat('Mercado Bitcoin', fmt(c.mb.patrimonio), pct(c.mb.patrimonio)));
+  if(c.xpGlobal && snXgBRL(c.xpGlobal)) cards.push(snRptStat('Internacional', fmt(snXgBRL(c.xpGlobal)), pct(snXgBRL(c.xpGlobal))));
+  return `<div class="stat-grid">${cards.join('')}</div>
+    <div style="margin-top:22px">${snRptDonut(snRptPorClasse(c))}</div>`;
+}
+function snRptRentab(c, mesKey){
+  const linhas = snRentabilidadeConsolidada(c);
+  if(!linhas) return '';
+  const soMB = !c.xp, soXP = !c.mb;
+  const cdiPor = { 'Mês': snCdiDoMes(mesKey,'mes'), 'No Ano': snCdiDoMes(mesKey,'ano') };
+  const rows = linhas.map(l=>{
+    const pc = snPctCDI(l.rentab, cdiPor[l.label]||0);
+    const cols = [`<td>${esc(l.label)}</td>`];
+    if(!soMB) cols.push(`<td class="num">${fmt(l.gXP)}</td>`);
+    if(!soXP) cols.push(`<td class="num">${fmt(l.gMB)}</td>`);
+    cols.push(`<td class="num"><b>${fmt(l.ganhoTotal)}</b></td>`);
+    cols.push(`<td class="num"><b>${snRptPct(l.rentab)}</b></td>`);
+    cols.push(`<td class="num gold">${pc!=null?pc.toFixed(0)+'%':'—'}</td>`);
+    return `<tr>${cols.join('')}</tr>`;
+  }).join('');
+  const head = ['<th>Período</th>'];
+  if(!soMB) head.push('<th class="num">Ganho XP</th>');
+  if(!soXP) head.push('<th class="num">Ganho MB</th>');
+  head.push('<th class="num">Ganho total</th>','<th class="num">Rentab.</th>','<th class="num">% do CDI</th>');
+  return `<table><thead><tr>${head.join('')}</tr></thead><tbody>${rows}</tbody></table>
+    <p class="foot">Rentabilidade consolidada = ganho financeiro somado ÷ patrimônio-base no início do período (saldo inicial real da MB; para a XP, estimado como patrimônio atual menos o ganho do período). Aportes/resgates relevantes distorcem o percentual — o ganho em R$ permanece confiável.</p>`;
+}
+function snRptSecaoXP(c, mesKey){
+  const x = c.xp; if(!x) return '';
+  const cdiMes = snCdiDoMes(mesKey,'mes');
+  const pcMes = snPctCDI(x.rentabMes, cdiMes);
+  const nd = (g,r)=> (!(+g) && !(+r)) ? 'n/d' : fmt(g);
+  const kpis = [
+    snRptStat('Patrimônio XP', fmt(x.patrimonio), ''),
+    snRptStat('Rentab. mês', snRptPct(x.rentabMes), (pcMes!=null?pcMes.toFixed(0)+'% do CDI':'')),
+    snRptStat('Rentab. no ano', snRptPct(x.rentabAno), (+x.ganhoAno||+x.rentabAno)? fmt(x.ganhoAno):'n/d'),
+    snRptStat('Rentab. 12M', snRptPct(x.rentab12m), (+x.ganho12m||+x.rentab12m)? fmt(x.ganho12m):'n/d'),
+    snRptStat('Rentab. 24M', snRptPct(x.rentab24m), fmt(x.ganho24m)),
+  ].join('');
+  // conferência: soma das estratégias vs patrimônio do grupo (fonte de verdade = patrimônio)
+  let alerta='';
+  const comp = x.composicao||[];
+  if(comp.length && +x.patrimonio>0){
+    const soma = comp.reduce((a,e)=>a+(+e.saldoBruto||0),0);
+    if(Math.abs(soma-x.patrimonio)/x.patrimonio > 0.01)
+      alerta = `<div class="alert">⚠ Conferência: a soma das estratégias (${fmt(soma)}) diverge do patrimônio XP oficial (${fmt(x.patrimonio)}). O patrimônio do grupo é a fonte de verdade.</div>`;
+  }
+  let compTbl='';
+  if(comp.length){
+    const tot = x.patrimonio || comp.reduce((a,e)=>a+(+e.saldoBruto||0),0);
+    compTbl = `<table style="margin-top:18px"><thead><tr><th>Estratégia</th><th class="num">Saldo</th><th class="num">% da XP</th></tr></thead><tbody>${
+      comp.slice().sort((a,b)=>b.saldoBruto-a.saldoBruto).map(e=>`<tr><td>${esc(e.nome)}</td><td class="num">${fmt(e.saldoBruto)}</td><td class="num">${tot>0?(e.saldoBruto/tot*100).toFixed(1):'0'}%</td></tr>`).join('')
+    }</tbody></table>`;
+  }
+  return `<section><h2>XP <span class="tag">Investimentos</span></h2>
+    <div class="stat-grid">${kpis}</div>${alerta}${compTbl}</section>`;
+}
+function snRptSecaoMB(c, mesKey){
+  const m = c.mb; if(!m) return '';
+  const cdiMes = snCdiDoMes(mesKey,'mes');
+  const pcMes = snPctCDI(m.rentabMes, cdiMes);
+  const cdiBench = (m.benchmark && m.benchmark.CDI) || 0;
+  const kpis = [
+    snRptStat('Saldo Renda Fixa Digital', fmt(m.patrimonio), ''),
+    snRptStat('Rentab. mês', snRptPct(m.rentabMes), (pcMes!=null?pcMes.toFixed(0)+'% do CDI':'')),
+    snRptStat('Rentab. 12M', snRptPct(m.rentab12m), (+m.resultado12m? fmt(m.resultado12m):'')),
+    snRptStat('Ganho no mês', fmt(m.ganhoMes), ''),
+  ].join('');
+  let tbl='';
+  if(m.ativos && m.ativos.length){
+    tbl = `<table style="margin-top:18px"><thead><tr><th>Ativo</th><th>Classe</th><th class="num">Saldo</th><th class="num">Rentab. mês</th></tr></thead><tbody>${
+      m.ativos.slice().sort((a,b)=>b.saldoBruto-a.saldoBruto).map(a=>`<tr><td>${esc(a.nome||'(não identificado)')}</td><td>${esc(a.estrategia||'—')}</td><td class="num">${fmt(a.saldoBruto)}</td><td class="num ${(+a.rentabMes>=0)?'up':'down'}">${snRptPct(a.rentabMes)}</td></tr>`).join('')
+    }</tbody></table>`;
+  }
+  return `<section><h2>Mercado Bitcoin <span class="tag">Renda Fixa Digital</span></h2>
+    <div class="stat-grid">${kpis}</div>${tbl}</section>`;
+}
+function snRptSecaoIntl(c){
+  const xg = c.xpGlobal; if(!xg || !snXgBRL(xg)) return '';
+  const cambio = +xg.cambio||0;
+  const totalUSD = (xg.ativos||[]).reduce((a,x)=>a+(+x.valorUSD||0),0);
+  const totalBRL = snXgBRL(xg);
+  let tbl='';
+  if(xg.ativos && xg.ativos.length){
+    tbl = `<table style="margin-top:18px"><thead><tr><th>Fundo</th><th class="num">Valor US$</th><th class="num">Rentab. mês</th><th class="num">Valor R$</th></tr></thead><tbody>${
+      xg.ativos.slice().sort((a,b)=>(+b.valorUSD||0)-(+a.valorUSD||0)).map(a=>`<tr><td>${esc(a.nome||'(não identificado)')}</td><td class="num">$ ${(+a.valorUSD||0).toLocaleString('pt-BR',{minimumFractionDigits:2})}</td><td class="num ${(+a.rentabMes>=0)?'up':'down'}">${snRptPct(a.rentabMes)}</td><td class="num">${fmt((+a.valorUSD||0)*cambio)}</td></tr>`).join('')
+    }</tbody></table>`;
+  }
+  const cambioTxt = cambio ? cambio.toLocaleString('pt-BR',{minimumFractionDigits:4}) : '—';
+  return `<section><h2>Portfólio Internacional <span class="tag">XP Global · US$</span></h2>
+    <div class="stat-grid">
+      ${snRptStat('Total investido', '$ '+totalUSD.toLocaleString('pt-BR',{minimumFractionDigits:2}), '')}
+      ${snRptStat('Câmbio USD→BRL', 'R$ '+cambioTxt, 'cotação do dia')}
+      ${snRptStat('Valor em reais', fmt(totalBRL), '')}
+    </div>${tbl}
+    <p class="foot">Portfólio internacional convertido pela cotação USD→BRL do dia. Sem quebra por período — entra na alocação consolidada como classe "Internacional", fora da tabela de rentabilidade por período.</p></section>`;
+}
+function snRptSecaoOportunidade(c){
+  const o = c.oportunidade;
+  if(!o || !(o.titulo||o.sub)) return '';
+  const fact=(l,k)=> o[k] ? `<div class="opp-fact"><div class="k">${l}</div><div class="v">${esc(o[k])}</div></div>`:'';
+  const porques=(o.porques||[]).filter(p=>p.titulo||p.corpo);
+  return `<section class="opp"><span class="eyebrow">Oportunidade</span>
+    <h2 class="opp-title">${esc(o.titulo||'')}</h2>
+    ${o.sub?`<div class="opp-sub">${esc(o.sub)}</div>`:''}
+    <div class="opp-facts">${fact('RATING','rating')}${fact('PRAZO','prazo')}${fact('PAGAMENTOS','pagamentos')}${fact('TAXA · OPÇÃO 1','taxa1')}${fact('TAXA · OPÇÃO 2','taxa2')}</div>
+    ${porques.length?`<div class="opp-why">${porques.map(p=>`<div><div class="wt">${esc(p.titulo||'')}</div><div class="wc">${esc(p.corpo||'')}</div></div>`).join('')}</div>`:''}
+  </section>`;
+}
+async function snGerarRelatorio(mesKey, codigo){
+  const bucket = S.supernova[mesKey];
+  const c = bucket && bucket.clientes[codigo];
+  if(!c){ alert('Cliente não encontrado neste mês.'); return; }
+  // abre a janela já no gesto do clique (evita bloqueio de pop-up) e mostra placeholder
+  const w = window.open('', '_blank');
+  if(!w){ alert('Permita pop-ups para abrir o relatório em nova aba.'); return; }
+  w.document.write('<!doctype html><meta charset="utf-8"><title>Gerando…</title><body style="font-family:sans-serif;padding:40px;color:#5C534C">Gerando relatório…</body>');
+  // câmbio automático se houver internacional sem cotação
+  if(c.xpGlobal && Array.isArray(c.xpGlobal.ativos) && c.xpGlobal.ativos.length && !(+c.xpGlobal.cambio)){
+    const cb = await snFetchUSDBRL(); if(cb>0){ c.xpGlobal.cambio = cb; save(); }
+  }
+  const nCustodias = (c.xp?1:0)+(c.mb?1:0)+((c.xpGlobal&&snXgBRL(c.xpGlobal))?1:0);
+  const dataRef = (c.xp && c.xp.dataReferencia) || (c.mb && c.mb.dataReferencia) || snRptRefData(mesKey);
+  const conta = (c.xp && c.xp.conta) || (c.mb && c.mb.conta) || c.codigo;
+  const assessor = c.assessor || (typeof S!=='undefined' && S.assessor) || '';
+  const tier = c.tier || '';
+  const metaLinha = ['Conta '+esc(conta), assessor?esc(assessor):'', tier?esc(tier):'', 'Ref. '+esc(dataRef)].filter(Boolean).join(' · ');
+
+  const secConsolidada = nCustodias>1 ? `<section><h2>Visão consolidada <span class="tag">${nCustodias} custódias</span></h2>${snRptConsolidada(c)}
+    <div style="margin-top:22px">${snRptRentab(c, mesKey)}</div></section>` : '';
+  const cdiMes = snCdiDoMes(mesKey,'mes');
+  const destaques = snRptDestaques(c, cdiMes);
+  const secDestaques = destaques ? `<section><h2>Destaques do mês <span class="tag">rentabilidade</span></h2>${destaques}</section>` : '';
+  const idxHtml = snRptIndices(mesKey);
+  const panoHtml = snRptPanorama(mesKey);
+  const secContexto = (idxHtml||panoHtml) ? `<section><h2>Panorama &amp; índices do mês</h2>
+    ${panoHtml}${idxHtml?`<div style="margin-top:${panoHtml?'20px':'0'}">${idxHtml}</div>`:''}</section>` : '';
+
+  const html = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Relatório · ${esc(c.nome||c.codigo)} · ${esc(snMesLabel(mesKey))}</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,500;9..144,600&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{--cream:#FAF3EC;--cream-2:#F3E9DE;--charcoal:#221E1D;--ink:#2B2420;--ink-soft:#5C534C;--line:#D8CBBB;--amber:#BE7F49;--amber-soft:#E7CBAE;--cream-on-dark:#F1E7DA;--ok:#4e7a5a;--warn:#a4552e;}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Inter',system-ui,sans-serif;background:var(--cream);color:var(--ink);font-size:14px;line-height:1.5;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+.page{max-width:940px;margin:0 auto;padding:0 26px 60px;}
+.rpt-head{background:var(--charcoal);color:var(--cream-on-dark);margin:0 -26px 30px;padding:38px 40px;display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:20px;}
+.rpt-head .eyebrow{color:var(--amber);}
+.rpt-head h1{font-family:'Fraunces',serif;font-weight:400;font-size:34px;color:#fff;margin:6px 0 4px;letter-spacing:-.01em;}
+.rpt-head .meta{font-size:12.5px;color:var(--amber-soft);}
+.rpt-head .hero{text-align:right;}
+.rpt-head .hero .l{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--amber-soft);}
+.rpt-head .hero .v{font-family:'Fraunces',serif;font-size:30px;color:#fff;margin-top:2px;}
+.eyebrow{font-size:11px;letter-spacing:.16em;text-transform:uppercase;font-weight:600;}
+.brand{display:flex;align-items:center;gap:10px;}
+.brand .mk{width:34px;height:34px;border:1px solid var(--amber);border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:'Fraunces',serif;color:var(--amber);font-size:16px;}
+.brand .bn{font-family:'Fraunces',serif;font-size:15px;line-height:1.1;color:#fff;}
+.brand .bn small{display:block;font-family:'Inter';font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--amber-soft);}
+section{background:#fff;border:1px solid var(--line);border-radius:16px;padding:26px 28px;margin-bottom:20px;}
+section h2{font-family:'Fraunces',serif;font-weight:500;font-size:21px;margin-bottom:18px;display:flex;align-items:baseline;gap:10px;}
+section h2 .tag{font-family:'Inter';font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--amber);font-weight:600;}
+.stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:13px;}
+.stat-card{background:var(--cream-2);border:1px solid var(--line);border-radius:13px;padding:15px 17px;}
+.stat-card .l{font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--ink-soft);}
+.stat-card .v{font-family:'Fraunces',serif;font-size:25px;color:var(--ink);margin-top:5px;line-height:1.05;}
+.stat-card .s{font-size:12px;color:var(--ink-soft);margin-top:3px;}
+.stat-card.dark{background:var(--charcoal);}
+.stat-card.dark .v{color:#fff;}.stat-card.dark .l,.stat-card.dark .s{color:var(--amber-soft);}
+.donut-wrap{display:flex;gap:30px;align-items:center;flex-wrap:wrap;}
+.donut{width:180px;height:180px;border-radius:50%;position:relative;flex:none;}
+.donut .hole{position:absolute;inset:28px;background:#fff;border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;}
+.donut .hole span{font-family:'Fraunces',serif;font-weight:500;font-size:19px;}
+.donut .hole small{font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-soft);margin-top:2px;}
+.legend{flex:1;min-width:220px;}
+.legend .leg{display:flex;align-items:center;gap:9px;font-size:13px;padding:4px 0;border-bottom:1px solid var(--line);}
+.legend .leg:last-child{border-bottom:0;}
+.legend .dot{width:11px;height:11px;border-radius:3px;flex:none;}
+.legend .nm{flex:1;}.legend b{font-weight:600;}
+table{width:100%;border-collapse:collapse;font-size:13px;}
+thead th{text-align:left;font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--ink-soft);font-weight:600;padding:8px 10px;border-bottom:2px solid var(--line);}
+td{padding:9px 10px;border-bottom:1px solid var(--line);}
+tbody tr:last-child td{border-bottom:0;}
+.num{text-align:right;font-variant-numeric:tabular-nums;}
+tr.grp td{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--amber);font-weight:700;padding-top:14px;border-bottom:0;}
+.gold{color:var(--amber);font-weight:700;}
+.up{color:var(--ok);font-weight:600;}.down{color:var(--warn);font-weight:600;}
+.foot{font-size:11px;color:var(--ink-soft);margin-top:12px;line-height:1.5;}
+.alert{background:#fff4ec;border:1px solid var(--warn);color:var(--warn);border-radius:11px;padding:11px 14px;font-size:12.5px;margin-top:16px;}
+.dest-grid{display:grid;grid-template-columns:1fr 1fr;gap:30px;}
+.dest-grid .col-h{font-size:11px;font-weight:700;letter-spacing:.05em;margin-bottom:6px;}
+.dest-row{display:flex;justify-content:space-between;align-items:flex-start;padding:9px 0;border-bottom:1px solid var(--line);}
+.dest-row .sub{font-size:11px;color:var(--ink-soft);margin-top:2px;}
+.dest-row .rt{text-align:right;}.dest-row .cdi{font-size:11px;color:var(--amber);font-weight:600;}
+.pano{display:flex;flex-direction:column;gap:2px;}
+.pano-item{display:flex;gap:20px;padding:13px 0;border-bottom:1px solid var(--line);}
+.pano-item:last-child{border-bottom:0;}
+.pano-tag{width:130px;flex:none;font-size:11px;letter-spacing:.06em;font-weight:700;color:var(--amber);text-transform:uppercase;padding-top:2px;}
+.pano-t{font-weight:700;font-size:15px;margin-bottom:3px;}
+.pano-c{font-size:13px;color:var(--ink-soft);line-height:1.55;white-space:pre-wrap;}
+.opp{background:var(--charcoal);color:var(--cream-on-dark);border:0;}
+.opp .eyebrow{color:var(--amber);}
+.opp-title{font-family:'Fraunces',serif;font-weight:500;font-size:24px;color:#fff;margin:8px 0 4px;}
+.opp-sub{font-size:13px;color:var(--amber-soft);margin-bottom:20px;}
+.opp-facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:16px;border-top:1px solid rgba(255,255,255,.14);padding:18px 0;}
+.opp-fact .k{font-size:10px;letter-spacing:.06em;color:var(--amber-soft);font-weight:700;margin-bottom:3px;}
+.opp-fact .v{font-weight:700;font-size:14px;color:#fff;}
+.opp-why{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:20px;border-top:1px solid rgba(255,255,255,.14);padding-top:18px;}
+.opp-why .wt{font-weight:700;font-size:13px;color:var(--amber-soft);margin-bottom:4px;}
+.opp-why .wc{font-size:12px;color:#cbd2e6;line-height:1.5;white-space:pre-wrap;}
+.empty{color:var(--ink-soft);font-size:13px;font-style:italic;}
+.disclaimer{font-size:10.5px;color:var(--ink-soft);line-height:1.55;padding:0 4px;}
+.toolbar{position:fixed;top:14px;right:14px;display:flex;gap:8px;z-index:10;}
+.toolbar button{font-family:'Inter';font-size:12px;font-weight:600;padding:8px 14px;border-radius:100px;border:1px solid var(--amber);background:var(--amber);color:#fff;cursor:pointer;}
+.toolbar button.ghost{background:#fff;color:var(--amber);}
+@media print{.toolbar{display:none;} body{background:#fff;} section{break-inside:avoid;border-color:#e5ddd0;}}
+@media(max-width:640px){.dest-grid{grid-template-columns:1fr;} .rpt-head{padding:28px 24px;}}
+</style></head><body>
+<div class="toolbar"><button onclick="window.print()">Imprimir / PDF</button><button class="ghost" onclick="window.close()">Fechar</button></div>
+<header class="rpt-head">
+  <div>
+    <div class="brand"><div class="mk">S</div><div class="bn">SVN Connect<small>Relatório de Investimentos</small></div></div>
+    <h1>${esc(c.nome||c.codigo)}</h1>
+    <div class="meta">${metaLinha}</div>
+  </div>
+  <div class="hero"><div class="l">Patrimônio total</div><div class="v">${fmt(snPatrimonioTotal(c))}</div></div>
+</header>
+<div class="page">
+  ${secContexto}
+  ${secConsolidada}
+  ${snRptSecaoXP(c, mesKey)}
+  ${snRptSecaoMB(c, mesKey)}
+  ${snRptSecaoIntl(c)}
+  ${secDestaques}
+  ${snRptSecaoOportunidade(c)}
+  <section><span class="eyebrow" style="color:var(--amber)">Aviso</span>
+    <p class="disclaimer" style="margin-top:10px">Este material tem caráter meramente informativo e não constitui oferta, recomendação ou solicitação de compra ou venda de qualquer ativo. Rentabilidade passada não representa garantia de rentabilidade futura. Os valores refletem a posição na data de referência (${esc(dataRef)}) e podem divergir da posição atual. Percentuais do CDI e rentabilidades consolidadas usam estimativas descritas em cada seção; aportes e resgates no período afetam os percentuais. Consulte seu assessor antes de tomar qualquer decisão de investimento.</p>
+  </section>
+</div></body></html>`;
+  w.document.open(); w.document.write(html); w.document.close();
 }
 // ---------------- Apresentação: edição in-place (Panorama e Oportunidade) ----------------
 function snApplyPresentMode(mode){
