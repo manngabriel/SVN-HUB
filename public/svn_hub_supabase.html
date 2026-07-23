@@ -15,7 +15,9 @@
   function reveal(){ const s=document.getElementById('authGuardStyle'); if(s) s.remove(); }
   function toLogin(){ window.location.replace('login.html'); }
   try{
-    const sb = window.supabase.createClient(AUTH_URL, AUTH_ANON_KEY);
+    const sb = window.supabase.createClient(AUTH_URL, AUTH_ANON_KEY, {
+      auth: { storage: window.sessionStorage, persistSession: true, autoRefreshToken: true }
+    });
     window.sbAuth = sb;
     sb.auth.getUser().then(({data})=>{
       if(data && data.user){ reveal(); }
@@ -2765,7 +2767,7 @@ th.num{text-align:right;}
       <div class="card">
         <div class="eyebrow">Entrada rápida</div>
         <div class="inline-fields" style="margin-bottom:12px;">
-          <div class="field" style="flex:1;"><label>Receita do mês</label><input type="text" inputmode="numeric" id="inReceita" oninput="maskMoeda(this)" onchange="setMeta('receita', parseMoeda(this))"></div>
+          <div class="field" style="flex:1;"><label>Receita do mês (auto)</label><input type="text" id="inReceita" readonly title="Soma das linhas Feito/Reservado no Planejamento de Receita + receita passiva" style="background:var(--cream-2);"></div>
           <div class="field" style="flex:1;"><label>Custódia MB</label><input type="text" inputmode="numeric" id="inMbCustodia" oninput="maskMoeda(this)" onchange="setMeta('mbCustodia', parseMoeda(this))"></div>
           <div class="field" style="flex:1;"><label>Meta de receita (auto)</label><input type="text" id="inMetaReceita" readonly title="(Custódia XP + Custódia MB) × 0,006 ÷ 12" style="background:var(--cream-2);"></div>
         </div>
@@ -5168,6 +5170,7 @@ const PLAN_PRODUTOS_DEFAULT = [
 ];
 const PLAN_STATUS = ['Feito','Não Feito','Reservado','Mensagem enviada','Push enviado'];
 const PLAN_STATUS_REALIZADO = ['Feito','Reservado'];
+const PLAN_STATUS_POTENCIAL = ['Não Feito','Mensagem enviada'];
 const PLAN_SEED = [{"cliente": "ALAN", "valor": 12000, "produto": "J&F", "roa": 1.8, "status": "Reservado"}, {"cliente": "Alexandre", "valor": 29119, "produto": "Cambio", "roa": 1.21, "status": "Feito"}, {"cliente": "Alexandre", "valor": 19435, "produto": "Deb Cemig", "roa": 2.3, "status": "Feito"}, {"cliente": "Alexandre", "valor": 30000, "produto": "Internacional - Câmbio", "roa": 1.5, "status": "Feito"}, {"cliente": "Barbara", "valor": 5000, "produto": "J&F", "roa": 1.8, "status": "Reservado"}, {"cliente": "Barbara", "valor": 6000, "produto": "MB", "roa": 2.0, "status": "Feito"}, {"cliente": "Carlos", "valor": 3000, "produto": "TOKENMB", "roa": 2.2, "status": "Feito"}, {"cliente": "Clarice", "valor": 14000, "produto": "J&F", "roa": 1.8, "status": "Reservado"}, {"cliente": "Fábio", "valor": 10000, "produto": "J&F", "roa": 1.8, "status": "Reservado"}, {"cliente": "Helio Sch.", "valor": 25000, "produto": "J&F", "roa": 1.8, "status": "Mensagem enviada"}, {"cliente": "Juan", "valor": 10000, "produto": "J&F", "roa": 1.8, "status": "Push enviado"}, {"cliente": "Kelly", "valor": 25000, "produto": "J&F", "roa": 1.8, "status": "Não Feito"}, {"cliente": "Marcio", "valor": 7000, "produto": "J&F", "roa": 1.8, "status": "Reservado"}, {"cliente": "Marlon", "valor": 17436, "produto": "Credmei", "roa": 2.0, "status": "Feito"}, {"cliente": "Marlon", "valor": 22475, "produto": "Jeitto", "roa": 2.0, "status": "Feito"}, {"cliente": "Marlon", "valor": 20000, "produto": "Renda fixa", "roa": 1.8, "status": "Mensagem enviada"}, {"cliente": "Moniky", "valor": 6000, "produto": "J&F", "roa": 1.8, "status": "Mensagem enviada"}, {"cliente": "Moniky", "valor": 10000, "produto": "NovoSaq", "roa": 2.0, "status": "Feito"}, {"cliente": "Nayara", "valor": 10000, "produto": "J&F", "roa": 1.8, "status": "Não Feito"}, {"cliente": "Otavio", "valor": 5000, "produto": "J&F", "roa": 1.8, "status": "Mensagem enviada"}, {"cliente": "Otavio", "valor": 12000, "produto": "MB", "roa": 2.0, "status": "Mensagem enviada"}, {"cliente": "Passivo", "valor": 4950, "produto": "Passivo", "roa": 100.0, "status": "Feito"}, {"cliente": "Patricia", "valor": 7000, "produto": "J&F", "roa": 1.8, "status": "Mensagem enviada"}, {"cliente": "Silvio", "valor": 6000, "produto": "J&F", "roa": 1.8, "status": "Não Feito"}, {"cliente": "Silvio", "valor": 8000, "produto": "MB", "roa": 2.0, "status": "Não Feito"}, {"cliente": "TOTAL REALIZADO", "valor": 324415, "produto": "", "roa": 2.5423, "status": "Não Feito"}, {"cliente": "POTENCIAL TOTAL", "valor": 324415, "produto": "", "roa": 3.2981, "status": "Não Feito"}];
 
 
@@ -5326,6 +5329,9 @@ function calc(){
   const custodiaXP = S.clientes.filter(clienteNomeado).reduce((a,x)=>a+(+x.custodia||0),0);
   const mbCustodia = +M.mbCustodia||0;
   M.metaReceita = (custodiaXP + mbCustodia) * 0.006 / 12;
+  // Receita do escritório automática: linhas realizadas (Feito/Reservado) no Planejamento + receita passiva
+  const passivaReceita = +S.planReceitaPassiva||0;
+  M.receita = (S.planReceita||[]).filter(r=>PLAN_STATUS_REALIZADO.includes(r.status)).reduce((a,r)=>a+planReceitaLinha(r),0) + passivaReceita;
   const receitaPct = M.metaReceita>0 ? (M.receita/M.metaReceita)*100 : 0;
   const captacaoPct = M.metaCaptacao>0 ? (M.captacao/M.metaCaptacao)*100 : 0;
   const totalClientes = S.clientes.filter(clienteNomeado).length;
@@ -5454,7 +5460,7 @@ function renderPainelOportunidades(){
   if(!document.getElementById('opoReceitaTot')) return;
   const money = v => fmt(v||0);
   // Receita prevista (linhas do Planejamento ainda não realizadas)
-  const pend = (S.planReceita||[]).filter(r=>!PLAN_STATUS_REALIZADO.includes(r.status));
+  const pend = (S.planReceita||[]).filter(r=>PLAN_STATUS_POTENCIAL.includes(r.status));
   const recTot = pend.reduce((a,r)=>a+planReceitaLinha(r),0);
   document.getElementById('opoReceitaTot').textContent = money(recTot);
   document.getElementById('opoReceitaSub').textContent = pend.length + ' linha(s) prevista(s)';
@@ -5965,7 +5971,7 @@ function updPlan(id,k,v){
   else r[k] = v;
   // Ao trocar o produto, puxa o ROA predefinido
   if(k==='produto') r.roa = planRoaDoProduto(v);
-  save(); renderPlanReceita();
+  save(); renderPlanReceita(); renderPainel();
 }
 function planReceitaLinha(r){ return (+r.valor||0)*((+r.roa||0)/100); }
 let planSortKey = null, planSortDir = 1;
@@ -10294,9 +10300,10 @@ function importarDados(ev){
 // ============================================================
 // INIT
 // ============================================================
-load();
-document.getElementById('selMes').value = S.mesAtual;
-renderAll();
+load().catch(e=>console.warn('Falha no load inicial', e)).finally(()=>{
+  document.getElementById('selMes').value = S.mesAtual;
+  renderAll();
+});
 
 // ============================================================
 // SVN R2 HUB (executa depois do load() do Hub, pois decide
