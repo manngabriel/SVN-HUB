@@ -5388,6 +5388,7 @@ function showView(v){
   if(v==='svn-r2' && window.r2ShowChooser) window.r2ShowChooser();
   if(v==='p10k' && window.fitTree) requestAnimationFrame(()=>requestAnimationFrame(window.fitTree));
   renderAll();
+  if(v==='painel') requestAnimationFrame(animatePainelIntro);
 }
 
 function renderClienteList(){
@@ -5454,6 +5455,48 @@ function renderPainel(){
   // modelo de remuneração (fee fixo × comission based)
   renderPainelModelo();
   renderPainelOportunidades();
+}
+
+// ---- Animação de entrada do Painel (números crescendo + donut) ----
+function _numFromMoney(str){
+  const s = (str||'').replace(/[^\d,-]/g,'').replace(/\./g,'').replace(',','.');
+  return parseFloat(s)||0;
+}
+function _animCount(el, target, dur, ease, format){
+  const start = performance.now();
+  (function step(now){
+    const t = Math.min(1,(now-start)/dur);
+    el.textContent = format(target*ease(t));
+    if(t<1) requestAnimationFrame(step); else el.textContent = format(target);
+  })(start);
+}
+function animatePainelIntro(){
+  if(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const dur = 900;
+  const ease = t => 1 - Math.pow(1-t, 3); // easeOutCubic
+  // KPIs em moeda
+  ['kpiCustodia','kpiReceita','kpiCaptacao','kpiReceitaPot','kpiFeeReceitaMes'].forEach(id=>{
+    const el = document.getElementById(id); if(!el) return;
+    const target = _numFromMoney(el.textContent);
+    if(!target) return;
+    _animCount(el, target, dur, ease, v=>fmt(v));
+  });
+  // Donut (arco + porcentagem)
+  const arc = document.getElementById('donutArc');
+  const nEl = document.getElementById('donutN');
+  if(arc && nEl){
+    const targetPct = parseInt(nEl.textContent,10)||0;
+    const circ = 2*Math.PI*64;
+    const start = performance.now();
+    (function step(now){
+      const t = Math.min(1,(now-start)/dur);
+      const cur = targetPct*ease(t);
+      const p = clamp(cur,0,100)/100;
+      arc.setAttribute('stroke-dasharray',(circ*p).toFixed(1)+' '+circ.toFixed(1));
+      nEl.textContent = Math.round(cur)+'%';
+      if(t<1) requestAnimationFrame(step); else nEl.textContent = targetPct+'%';
+    })(start);
+  }
 }
 
 function renderPainelOportunidades(){
@@ -10303,6 +10346,7 @@ function importarDados(ev){
 load().catch(e=>console.warn('Falha no load inicial', e)).finally(()=>{
   document.getElementById('selMes').value = S.mesAtual;
   renderAll();
+  requestAnimationFrame(animatePainelIntro);
 });
 
 // ============================================================
