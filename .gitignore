@@ -1,0 +1,5 @@
+# Relatórios/planilhas de clientes — contêm dados pessoais (CPF, e-mail, custódia).
+# Nunca versionar: uso local para importar no hub.
+*.xlsx
+*.xls
+*.csv

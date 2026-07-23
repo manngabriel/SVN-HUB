@@ -2681,6 +2681,7 @@ th.num{text-align:right;}
   <button class="nav-item" id="nav-captacao" onclick="showView('captacao')"><span class="ic">↗</span>Captação &amp; Pipeline</button>
   <button class="nav-item" id="nav-planejamento" onclick="showView('planejamento')"><span class="ic">▦</span>Planejamento de Receita</button>
   <button class="nav-item" id="nav-pj2" onclick="showView('pj2')"><span class="ic">◇</span>PJ2 · Novos negócios</button>
+  <button class="nav-item" id="nav-receita-analise" onclick="showView('receita-analise')"><span class="ic">📊</span>Análise de Receita</button>
   <div class="nav-label">Ferramentas SVN</div>
   <button class="nav-item" id="nav-ff-calc" onclick="showView('ff-calc')"><span class="ic">🧮</span>Calculadora Fee Fixo</button>
   <button class="nav-item" id="nav-cet-fin" onclick="showView('cet-fin')"><span class="ic">⚖</span>Financiamento × Consórcio</button>
@@ -3026,6 +3027,20 @@ th.num{text-align:right;}
       <div id="pj2MatrixWrap">
         <table id="tblPj2Matrix"><thead id="pj2MatrixHead"></thead><tbody id="pj2MatrixBody"></tbody></table>
       </div>
+    </div>
+    <div class="card">
+      <div class="eyebrow">Atualização em massa</div>
+      <div class="desc">Importe relatórios para preencher <b>XP Global</b>, <b>Mercado Bitcoin</b>, <b>Open Finance</b> e <b>Financial Planning</b> de vários clientes de uma vez. Casa pelo código da conta (ou pelo nome, no MB). Só altera clientes que existirem na Base.</div>
+      <div class="inline-fields" style="margin-top:8px; gap:10px; align-items:center;">
+        <input type="file" id="pj2XPGFile" accept=".xlsx,.xls" style="display:none" onchange="pj2ImportXPGlobal(event)">
+        <button class="btn ghost" onclick="document.getElementById('pj2XPGFile').click()">↥ XP Global (.xlsx)</button>
+        <input type="file" id="pj2MBFile" accept=".xlsx,.xls" style="display:none" onchange="pj2ImportMB(event)">
+        <button class="btn ghost" onclick="document.getElementById('pj2MBFile').click()">↥ Mercado Bitcoin (.xlsx)</button>
+        <input type="file" id="pj2OFFile" accept=".xlsx,.xls" style="display:none" onchange="pj2ImportOpenFinance(event)">
+        <button class="btn ghost" onclick="document.getElementById('pj2OFFile').click()">↥ Sem Open Finance (.xlsx)</button>
+        <button class="btn ghost" onclick="pj2AplicarPlanejamento()">✓ Financial Planning concluído</button>
+      </div>
+      <div id="pj2BulkStatus" style="margin-top:12px; font-size:13px; line-height:1.5;"></div>
     </div>
     <div class="card">
       <div class="eyebrow">Cadência por produto · conforme Plano 10K</div>
@@ -5014,6 +5029,76 @@ th.num{text-align:right;}
     </div>
   </div>
 
+  <!-- ================= ANÁLISE DE RECEITA ================= -->
+  <div class="view" id="view-receita-analise">
+    <div class="card">
+      <div class="eyebrow">Importar relatório de receita</div>
+      <div class="desc">Envie o arquivo <b>DRA · Agente</b> (.csv) exportado do sistema. Cada arquivo traz um mês (competência). Importe vários meses para ver a evolução. Reimportar um mês substitui os dados dele.</div>
+      <div style="margin-top:12px; display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+        <input type="file" id="raFile" accept=".csv" style="display:none" onchange="raHandleFile(event)">
+        <button class="btn solid" onclick="document.getElementById('raFile').click()">Selecionar arquivo .csv</button>
+        <span id="raFileName" style="color:var(--ink-soft); font-size:13px;"></span>
+      </div>
+      <div id="raImportStatus" style="margin-top:12px; font-size:13px;"></div>
+    </div>
+
+    <div id="raEmpty" class="card" style="display:none;">
+      <div class="empty">Nenhum relatório importado ainda. Selecione um arquivo .csv acima para começar.</div>
+    </div>
+
+    <div id="raDash" style="display:none;">
+      <div class="card" style="display:flex; gap:14px; align-items:flex-end; flex-wrap:wrap; margin-bottom:18px;">
+        <div class="field" style="min-width:170px;"><label>Mês (competência)</label><select id="raMesSel" onchange="raSetMes(this.value)"></select></div>
+        <div class="field" style="min-width:190px;"><label>Ver receita por</label>
+          <select id="raDimSel" onchange="raSetDim(this.value)"><option value="cat">Categoria (produto)</option><option value="origem">Canal (origem)</option></select>
+        </div>
+        <div id="raPeriodoInfo" style="margin-left:auto; font-size:12px; color:var(--ink-soft);"></div>
+      </div>
+
+      <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); margin-bottom:18px;">
+        <div class="kpi dark"><div class="l">Receita escritório</div><div class="v" id="raKpiTotal">R$0</div><div class="s" id="raKpiMes">—</div></div>
+        <div class="kpi"><div class="l">Clientes que remuneram</div><div class="v" id="raKpiClientes">0</div><div class="s">no período</div></div>
+        <div class="kpi"><div class="l">Ticket médio · cliente</div><div class="v" id="raKpiTicket">R$0</div><div class="s" id="raKpiTop">—</div></div>
+      </div>
+
+      <div class="grid c2">
+        <div class="card">
+          <div class="eyebrow">De onde vem a receita</div>
+          <div class="resultado-wrap" style="align-items:flex-start; margin-top:10px;">
+            <div class="donut" style="width:170px; height:170px;">
+              <div id="raDonut" style="width:170px; height:170px; border-radius:50%; background:var(--cream-2);"></div>
+              <div class="center"><div class="n" id="raDonutN" style="font-size:20px;">R$0</div><div class="l" id="raDonutL">total</div></div>
+            </div>
+            <div class="metas-col" id="raCatBars" style="min-width:240px;"></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="eyebrow">Concentração</div>
+          <div class="desc">Quanto da receita vem dos maiores clientes — risco de dependência.</div>
+          <div id="raConc" style="margin-top:6px;"></div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:18px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:6px;">
+          <div><div class="eyebrow">Ranking de clientes</div><div class="desc" style="margin:0;">Quem mais remunera no topo. Alterne para ver quem menos remunera.</div></div>
+          <div style="display:flex; gap:8px;">
+            <button class="btn ghost tiny" id="raBtnMais" onclick="raSetSort('desc')">Mais remuneram</button>
+            <button class="btn ghost tiny" id="raBtnMenos" onclick="raSetSort('asc')">Menos remuneram</button>
+          </div>
+        </div>
+        <input class="search" id="raBusca" placeholder="Buscar cliente…" oninput="raRenderRanking()" style="margin:8px 0; width:100%;">
+        <div id="raRanking" style="max-height:520px; overflow:auto;"></div>
+      </div>
+
+      <div class="card" id="raEvolCard" style="margin-top:18px; display:none;">
+        <div class="eyebrow">Evolução mês a mês</div>
+        <div class="desc">Receita escritório total por mês. Segmentos coloridos = categorias.</div>
+        <div id="raEvol"></div>
+      </div>
+    </div>
+  </div>
+
   <!-- ================= POSITIVADOR ================= -->
   <div class="view" id="view-positivador">
     <div class="card">
@@ -5185,6 +5270,7 @@ let S = {
   planReceitaPassiva: 0,
   planProdutos: PLAN_PRODUTOS_DEFAULT.map(p=>({...p})),
   supernova: {},
+  receitaReports: {},
   meses: {}
 };
 
@@ -5251,6 +5337,7 @@ async function load(){
   if(!Array.isArray(S.r2decks)) S.r2decks = [];
   if(!Array.isArray(S.todos)) S.todos = [];
   if(!S.navNames || typeof S.navNames !== 'object') S.navNames = {};
+  if(!S.receitaReports || typeof S.receitaReports !== 'object') S.receitaReports = {};
   if(!Array.isArray(S.planReceita)) S.planReceita = [];
   if(!Array.isArray(S.planProdutos) || !S.planProdutos.length) S.planProdutos = PLAN_PRODUTOS_DEFAULT.map(p=>({...p}));
   if(typeof S.planReceitaPassiva !== 'number') S.planReceitaPassiva = 0;
@@ -5370,7 +5457,8 @@ const TITLES = {
   'fee-fixo':['Apresentação Fee Fixo','Deck institucional sobre o modelo de remuneração fixa sobre o patrimônio.'],
   'sim-carteira':['Simulador de Carteira','Compare a carteira atual e proposta de um cliente, com modo de apresentação.'],
   'svn-r2':['SVN R2 Hub','Monte o deck de proposta para a reunião R2, por cliente da Base de clientes.'],
-  positivador:['Upload Positivador','Importa Positivador e Diversificador (.xlsx) e sincroniza com a Base de clientes.']
+  positivador:['Upload Positivador','Importa Positivador e Diversificador (.xlsx) e sincroniza com a Base de clientes.'],
+  'receita-analise':['Análise de Receita','De onde vem sua receita e quais clientes mais e menos remuneram — por mês.']
 };
 
 const GESTAO_VIEWS = ['painel','clientes','captacao','planejamento','pj2'];
@@ -5420,6 +5508,7 @@ function renderAll(){
   ffPopularClientes();
   ffRecalc();
   scPopularClientes();
+  renderReceitaAnalise();
   save();
 }
 
@@ -5497,6 +5586,259 @@ function animatePainelIntro(){
       if(t<1) requestAnimationFrame(step); else nEl.textContent = targetPct+'%';
     })(start);
   }
+}
+
+// ============================================================
+// ANÁLISE DE RECEITA (importa DRA · Agente .csv)
+// ============================================================
+const RA_CAT_COLORS = ['#BE7F49','#4e7a5a','#8C5A34','#a4552e','#c9a15f','#5C534C','#6b8f7a','#2B2420','#d8b98c','#9d7b4f','#b08968','#7a6a58'];
+let _raSel = { mes:null, dim:'cat', sortDir:'desc' };
+let _raAgg = null;
+let _raPending = null;
+
+function raCategoria(familia){
+  const f = (familia||'').toUpperCase();
+  if(f.includes('BITCOIN')) return 'MB (Cripto)';
+  if(f.includes('INTERNACIONAL') || f.includes('CLEARTHROUGH')) return 'Internacional';
+  if(f.includes('CORPORATE')) return 'Corporate';
+  if(f.includes('RENDA FIXA')) return 'Renda Fixa';
+  if(f.includes('RENDA VARI')) return 'Renda Variável';
+  if(f.includes('PREVID') || f.includes('PREV SVN')) return 'Previdência';
+  if(f.includes('FUNDOS')) return 'Fundos';
+  if(f.includes('GESTORA')) return 'Gestora SVN';
+  if(f.includes('VIDA') || f.includes('SEGURO')) return 'Seguros';
+  if(f.includes('FEE FIXO')) return 'Fee Fixo';
+  if(f.includes('BANCO')) return 'Banco';
+  if(f.includes('TRANSFER')) return 'Transferência';
+  return 'Outros';
+}
+function raNum(s){ if(s==null) return 0; return parseFloat(String(s).trim().replace(/\./g,'').replace(',','.'))||0; }
+function raClienteBaseNome(codigo){ const c = S.clientes.find(x=>x.codigo && String(x.codigo)===String(codigo)); return c ? c.nome : null; }
+function raDetalheNome(det){ const d=(det||'').trim(); if(!d) return null; if(/^cliente\s+\d+/i.test(d)) return null; const nm=d.split(' - ')[0].trim(); return nm||null; }
+function raMesSort(a,b){ const pa=a.split('-'), pb=b.split('-'); return (pa[1]+pa[0]).localeCompare(pb[1]+pb[0]); }
+function raMesLabel(m){ const p=String(m).split('-'); const nomes=['','jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez']; return (nomes[+p[0]]||p[0])+'/'+(p[1]||''); }
+function raShortName(n){ n=String(n||'').trim(); const p=n.split(/\s+/); return p.length>2 ? p[0]+' '+p[1] : n; }
+
+function raParseCSV(text){
+  const lines = text.split(/\r?\n/).filter(l=>l.trim().length);
+  if(!lines.length) return {};
+  const header = lines[0].split(';').map(h=>h.trim());
+  const iComp = header.findIndex(h=>/compet/i.test(h));
+  const iEscr = header.findIndex(h=>/escrit.*vl.*comiss/i.test(h));
+  const iCod  = header.findIndex(h=>/cod\.?\s*cliente/i.test(h));
+  const iFam  = header.findIndex(h=>/fam.*produto/i.test(h));
+  const iOrig = header.findIndex(h=>h.toLowerCase()==='origem');
+  const iDet  = header.findIndex(h=>h.toLowerCase()==='detalhe');
+  if(iComp<0 || iEscr<0){ throw new Error('Cabeçalho não reconhecido (faltam colunas Competência / Escrit. Vl. Comissão).'); }
+  const reports = {};
+  for(let li=1; li<lines.length; li++){
+    const c = lines[li].split(';');
+    const comp = (c[iComp]||'').trim(); if(!comp) continue;
+    const receita = raNum(c[iEscr]); if(!receita) continue;
+    const cat = raCategoria(iFam>=0 ? c[iFam] : '');
+    const origem = (iOrig>=0 ? (c[iOrig]||'').trim() : '') || '—';
+    const codRaw = (iCod>=0 ? (c[iCod]||'').trim() : '');
+    const det = iDet>=0 ? (c[iDet]||'') : '';
+    let key, label;
+    if(/^\d+$/.test(codRaw)){
+      key = 'c:'+codRaw;
+      label = raClienteBaseNome(codRaw) || raDetalheNome(det) || ('Cliente '+codRaw);
+    } else {
+      const nm = raDetalheNome(det);
+      if(nm){ key='n:'+nm.toLowerCase(); label=nm; }
+      else { key='k:'+(codRaw||'sem'); label = codRaw || 'Sem identificação'; }
+    }
+    const r = reports[comp] || (reports[comp] = {total:0, nLinhas:0, byCat:{}, byOrigem:{}, byClient:{}});
+    r.total += receita; r.nLinhas++;
+    r.byCat[cat] = (r.byCat[cat]||0) + receita;
+    r.byOrigem[origem] = (r.byOrigem[origem]||0) + receita;
+    const cl = r.byClient[key] || (r.byClient[key] = {label, receita:0, cats:{}});
+    if(label && !/^Cliente\s+\d+$/.test(label)) cl.label = label;
+    cl.receita += receita;
+    cl.cats[cat] = (cl.cats[cat]||0) + receita;
+  }
+  Object.keys(reports).forEach(k=>{ const r=reports[k]; r.nClientes = Object.keys(r.byClient).length; r.importedAt = Date.now(); });
+  return reports;
+}
+
+function raAgg(mes){
+  const reps = S.receitaReports||{}; const keys = Object.keys(reps);
+  if(!keys.length) return null;
+  if(mes==='__all__'){
+    const sel = {total:0, byCat:{}, byOrigem:{}, byClient:{}, nClientes:0};
+    keys.forEach(k=>{ const r=reps[k];
+      sel.total += r.total;
+      for(const c in r.byCat) sel.byCat[c]=(sel.byCat[c]||0)+r.byCat[c];
+      for(const o in r.byOrigem) sel.byOrigem[o]=(sel.byOrigem[o]||0)+r.byOrigem[o];
+      for(const ck in r.byClient){ const s=r.byClient[ck]; const d=sel.byClient[ck]||(sel.byClient[ck]={label:s.label,receita:0,cats:{}}); d.label=s.label; d.receita+=s.receita; for(const cc in s.cats) d.cats[cc]=(d.cats[cc]||0)+s.cats[cc]; }
+    });
+    sel.nClientes = Object.keys(sel.byClient).length;
+    return sel;
+  }
+  return reps[mes] || null;
+}
+
+function raSetMes(v){ _raSel.mes=v; renderReceitaAnalise(); }
+function raSetDim(v){ _raSel.dim=v; renderReceitaAnalise(); }
+function raSetSort(d){ _raSel.sortDir=d; renderReceitaAnalise(); }
+
+function renderReceitaAnalise(){
+  const view = document.getElementById('view-receita-analise'); if(!view) return;
+  const reps = S.receitaReports||{};
+  const months = Object.keys(reps).sort(raMesSort);
+  const empty = document.getElementById('raEmpty'), dash = document.getElementById('raDash');
+  if(!empty || !dash) return;
+  if(!months.length){ empty.style.display=''; dash.style.display='none'; return; }
+  empty.style.display='none'; dash.style.display='';
+  if(_raSel.mes==null || (_raSel.mes!=='__all__' && !reps[_raSel.mes])) _raSel.mes = months[months.length-1];
+  const selMes = document.getElementById('raMesSel');
+  let opts = months.map(m=>`<option value="${m}" ${m===_raSel.mes?'selected':''}>${raMesLabel(m)}</option>`).join('');
+  if(months.length>1) opts += `<option value="__all__" ${_raSel.mes==='__all__'?'selected':''}>Todos os meses</option>`;
+  selMes.innerHTML = opts;
+  document.getElementById('raDimSel').value = _raSel.dim;
+  document.getElementById('raBtnMais').classList.toggle('solid', _raSel.sortDir==='desc');
+  document.getElementById('raBtnMenos').classList.toggle('solid', _raSel.sortDir==='asc');
+
+  const agg = raAgg(_raSel.mes); _raAgg = agg; if(!agg) return;
+  document.getElementById('raKpiTotal').textContent = fmt(agg.total);
+  document.getElementById('raKpiMes').textContent = _raSel.mes==='__all__' ? months.length+' meses somados' : ('competência '+raMesLabel(_raSel.mes));
+  document.getElementById('raKpiClientes').textContent = agg.nClientes;
+  const ticket = agg.nClientes ? agg.total/agg.nClientes : 0;
+  document.getElementById('raKpiTicket').textContent = fmt(ticket);
+  const rank = Object.values(agg.byClient).sort((a,b)=>b.receita-a.receita);
+  document.getElementById('raKpiTop').textContent = rank.length ? ('maior: '+raShortName(rank[0].label)) : '—';
+  document.getElementById('raPeriodoInfo').textContent = _raSel.dim==='cat' ? 'quebra por categoria de produto' : 'quebra por canal de origem';
+
+  raRenderBreakdown(agg);
+  raRenderConc(rank, agg.total);
+  raRenderRanking();
+  raRenderEvol(months);
+}
+
+function raRenderBreakdown(agg){
+  const data = _raSel.dim==='cat' ? agg.byCat : agg.byOrigem;
+  const entries = Object.entries(data).sort((a,b)=>b[1]-a[1]);
+  const total = entries.reduce((s,e)=>s+e[1],0);
+  let acc=0; const stops=[];
+  entries.forEach((e,i)=>{
+    const col = RA_CAT_COLORS[i%RA_CAT_COLORS.length];
+    const from = total>0 ? acc/total*100 : 0;
+    acc += e[1];
+    const to = total>0 ? acc/total*100 : 0;
+    stops.push(`${col} ${from.toFixed(2)}% ${to.toFixed(2)}%`);
+  });
+  const donut = document.getElementById('raDonut');
+  donut.style.background = entries.length ? `conic-gradient(${stops.join(',')})` : 'var(--cream-2)';
+  donut.style.webkitMask = 'radial-gradient(transparent 54%, #000 55%)';
+  donut.style.mask = 'radial-gradient(transparent 54%, #000 55%)';
+  document.getElementById('raDonutN').textContent = fmt(total);
+  document.getElementById('raDonutL').textContent = _raSel.mes==='__all__' ? 'total' : raMesLabel(_raSel.mes);
+  const max = entries.length ? entries[0][1] : 1;
+  document.getElementById('raCatBars').innerHTML = entries.map((e,i)=>{
+    const col = RA_CAT_COLORS[i%RA_CAT_COLORS.length];
+    const p = total>0 ? e[1]/total*100 : 0;
+    const w = max>0 ? e[1]/max*100 : 0;
+    return `<div class="meta-row" style="margin-bottom:10px;">
+      <div class="head"><span class="name"><span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:${col};margin-right:7px;"></span>${esc(e[0])}</span><span class="val">${fmt(e[1])} · ${p.toFixed(1)}%</span></div>
+      <div class="bar"><div style="width:${w}%;background:${col};"></div></div>
+    </div>`;
+  }).join('') || '<div class="empty">Sem dados.</div>';
+}
+
+function raRenderConc(rank, total){
+  const el = document.getElementById('raConc');
+  if(!rank.length){ el.innerHTML='<div class="empty">Sem dados.</div>'; return; }
+  const sum = n => rank.slice(0,n).reduce((s,c)=>s+c.receita,0);
+  const faixas = [[5,'Top 5'],[10,'Top 10'],[20,'Top 20']].filter(r=>r[0]===5 || r[0]<=rank.length);
+  el.innerHTML = faixas.map(([n,lab])=>{
+    const v=sum(n); const p=total>0?v/total*100:0;
+    return `<div class="meta-row" style="margin-bottom:12px;">
+      <div class="head"><span class="name">${lab} clientes</span><span class="val">${p.toFixed(1)}% · ${fmt(v)}</span></div>
+      <div class="bar"><div style="width:${clamp(p,0,100)}%;"></div></div></div>`;
+  }).join('') + `<div class="footer-note">${rank.length} cliente(s) remuneram no período.</div>`;
+}
+
+function raRenderRanking(){
+  const agg = _raAgg; if(!agg) return;
+  const busca = document.getElementById('raBusca'); const q = (busca && busca.value || '').toLowerCase();
+  let rank = Object.values(agg.byClient);
+  rank.sort((a,b)=> _raSel.sortDir==='asc' ? a.receita-b.receita : b.receita-a.receita);
+  if(q) rank = rank.filter(c=>c.label.toLowerCase().includes(q));
+  const total = agg.total;
+  const topCat = c => { const e=Object.entries(c.cats).sort((a,b)=>b[1]-a[1])[0]; return e ? e[0] : '—'; };
+  const rows = rank.map((c,i)=>`<tr>
+    <td class="num" style="color:var(--ink-soft);">${i+1}</td>
+    <td>${esc(c.label)}</td>
+    <td><span class="tag t3">${esc(topCat(c))}</span></td>
+    <td class="num">${fmt(c.receita)}</td>
+    <td class="num">${total>0?(c.receita/total*100).toFixed(1):'0'}%</td>
+  </tr>`).join('');
+  document.getElementById('raRanking').innerHTML = `<table>
+    <thead><tr><th class="num noclick">#</th><th class="noclick">Cliente</th><th class="noclick">Categoria principal</th><th class="num" onclick="raSetSort('${_raSel.sortDir==='desc'?'asc':'desc'}')">Receita ${_raSel.sortDir==='desc'?'▾':'▴'}</th><th class="num noclick">% total</th></tr></thead>
+    <tbody>${rows || '<tr><td colspan="5" class="empty">Nada encontrado.</td></tr>'}</tbody></table>`;
+}
+
+function raRenderEvol(months){
+  const card = document.getElementById('raEvolCard');
+  if(months.length<2){ card.style.display='none'; return; }
+  card.style.display='';
+  const reps = S.receitaReports;
+  const catTot = {};
+  months.forEach(m=>{ for(const c in reps[m].byCat) catTot[c]=(catTot[c]||0)+reps[m].byCat[c]; });
+  const cats = Object.keys(catTot).sort((a,b)=>catTot[b]-catTot[a]);
+  const colOf = c => RA_CAT_COLORS[cats.indexOf(c)%RA_CAT_COLORS.length];
+  const maxTot = Math.max(...months.map(m=>reps[m].total), 1);
+  const H = 180;
+  const bars = months.map(m=>{
+    const r = reps[m]; const h = maxTot>0 ? r.total/maxTot*H : 0;
+    const segs = cats.filter(c=>r.byCat[c]).map(c=>{
+      const sh = r.total>0 ? r.byCat[c]/r.total*h : 0;
+      return `<div title="${esc(c)}: ${fmt(r.byCat[c])}" style="height:${sh}px; background:${colOf(c)};"></div>`;
+    }).join('');
+    return `<div style="display:flex; flex-direction:column; align-items:center; gap:6px; min-width:56px;">
+      <div style="font-size:11px; color:var(--ink-soft); white-space:nowrap;">${fmt(r.total)}</div>
+      <div style="width:40px; height:${H}px; display:flex; flex-direction:column-reverse; border-radius:6px 6px 0 0; overflow:hidden; background:var(--cream-2);">${segs}</div>
+      <div style="font-size:11px; color:var(--ink); font-weight:600;">${raMesLabel(m)}</div>
+    </div>`;
+  }).join('');
+  const legend = cats.map(c=>`<span style="display:inline-flex; align-items:center; gap:5px; font-size:11.5px; color:var(--ink-soft); margin-right:12px;"><span style="width:9px;height:9px;border-radius:2px;background:${colOf(c)};"></span>${esc(c)}</span>`).join('');
+  document.getElementById('raEvol').innerHTML = `<div style="display:flex; gap:14px; align-items:flex-end; padding:10px 0 4px; overflow-x:auto;">${bars}</div><div style="margin-top:14px;">${legend}</div>`;
+}
+
+function raHandleFile(ev){
+  const f = ev.target.files[0]; if(!f) return;
+  document.getElementById('raFileName').textContent = f.name;
+  const status = document.getElementById('raImportStatus');
+  const r = new FileReader();
+  r.onload = ()=>{
+    try{
+      const parsed = raParseCSV(r.result);
+      const comps = Object.keys(parsed).sort(raMesSort);
+      if(!comps.length){ status.innerHTML = '<div style="color:var(--warn);">Não encontrei linhas com receita. Confira se é o arquivo DRA · Agente (.csv separado por ;).</div>'; return; }
+      const resumo = comps.map(c=>`${raMesLabel(c)}: ${fmt(parsed[c].total)} · ${parsed[c].nClientes} clientes`).join(' &nbsp;·&nbsp; ');
+      const existentes = comps.filter(c=>S.receitaReports && S.receitaReports[c]);
+      const aviso = existentes.length ? `<div style="color:var(--warn); margin-top:6px;">Já existe dado para ${existentes.map(raMesLabel).join(', ')} — importar substitui.</div>` : '';
+      _raPending = parsed;
+      status.innerHTML = `<div style="padding:10px 12px; background:var(--cream-2); border-radius:9px;">
+        <b>${comps.length} mês(es) no arquivo.</b> ${resumo}${aviso}
+        <div style="margin-top:10px;"><button class="btn solid tiny" onclick="raConfirmImport()">Importar</button></div>
+      </div>`;
+    }catch(e){ console.error(e); status.innerHTML = '<div style="color:var(--warn);">Erro ao ler: '+esc(e.message)+'</div>'; }
+  };
+  r.readAsText(f, 'ISO-8859-1');
+  ev.target.value = '';
+}
+
+function raConfirmImport(){
+  if(!_raPending){ return; }
+  if(!S.receitaReports) S.receitaReports = {};
+  const comps = Object.keys(_raPending).sort(raMesSort);
+  comps.forEach(c=>{ S.receitaReports[c] = _raPending[c]; });
+  _raSel.mes = comps[comps.length-1];
+  _raPending = null;
+  document.getElementById('raImportStatus').innerHTML = '<div style="color:var(--ok);">Importado com sucesso.</div>';
+  save();
+  renderReceitaAnalise();
 }
 
 function renderPainelOportunidades(){
@@ -6440,6 +6782,110 @@ function exportPj2XLSX(){
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'PJ2 Status');
   XLSX.writeFile(wb, 'pj2_status.xlsx');
+}
+
+// ---- PJ2: atualização em massa (importa relatórios e preenche a matriz) ----
+function pj2Norm(s){ return String(s==null?'':s).normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().replace(/\s+/g,' ').trim(); }
+function pj2SetStatus(c, key, val){ if(!c.pj2status) c.pj2status = {}; c.pj2status[key] = val; }
+function pj2BulkMsg(html){ const el = document.getElementById('pj2BulkStatus'); if(el) el.innerHTML = html; }
+async function pj2LerXlsx(file){
+  const buf = await file.arrayBuffer();
+  const wb = XLSX.read(new Uint8Array(buf), {type:'array'});
+  return XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {defval:''});
+}
+function pj2MapaBase(){
+  const byCod = {}, byNome = {};
+  S.clientes.forEach(c=>{ if(c.codigo) byCod[String(c.codigo).trim()] = c; const n = pj2Norm(c.nome); if(n) byNome[n] = c; });
+  return {byCod, byNome};
+}
+
+async function pj2ImportXPGlobal(ev){
+  const f = ev.target.files[0]; if(!f) return; ev.target.value = '';
+  try{
+    const rows = await pj2LerXlsx(f);
+    if(!rows.length){ pj2BulkMsg('<span style="color:var(--warn)">Planilha vazia.</span>'); return; }
+    const codKey = Object.keys(rows[0]).find(k=>/c[oó]d.*conta/i.test(k));
+    if(!codKey){ pj2BulkMsg('<span style="color:var(--warn)">Não encontrei a coluna do código da conta (ex.: "Código da Conta Brasil").</span>'); return; }
+    const {byCod} = pj2MapaBase();
+    let ok=0, miss=0;
+    rows.forEach(r=>{ const cod = String(r[codKey]||'').trim(); if(!cod) return; const c = byCod[cod];
+      if(c){ pj2SetStatus(c,'xpGlobal','Ativo'); ok++; } else miss++; });
+    save(); renderPj2Matrix();
+    pj2BulkMsg(`<span style="color:var(--ok)">XP Global: ${ok} cliente(s) marcados como <b>Ativo</b>.</span>` + (miss?` <span style="color:var(--ink-soft)">${miss} conta(s) do relatório não estão na Base.</span>`:''));
+  }catch(e){ console.error(e); pj2BulkMsg('<span style="color:var(--warn)">Erro ao ler: '+esc(e.message)+'</span>'); }
+}
+
+async function pj2ImportMB(ev){
+  const f = ev.target.files[0]; if(!f) return; ev.target.value = '';
+  try{
+    const rows = await pj2LerXlsx(f);
+    if(!rows.length){ pj2BulkMsg('<span style="color:var(--warn)">Planilha vazia.</span>'); return; }
+    const nomeKey = Object.keys(rows[0]).find(k=>/^cliente$/i.test(k)) || Object.keys(rows[0]).find(k=>/cliente/i.test(k));
+    const cartKey = Object.keys(rows[0]).find(k=>/carteira/i.test(k));
+    if(!nomeKey){ pj2BulkMsg('<span style="color:var(--warn)">Não encontrei a coluna "Cliente".</span>'); return; }
+    const {byNome} = pj2MapaBase();
+    let casados=0, comInv=0, miss=[];
+    rows.forEach(r=>{ const nm = pj2Norm(r[nomeKey]); if(!nm) return; const c = byNome[nm];
+      const cart = parseFloat(String(r[cartKey]||'0').replace(',','.'))||0;
+      if(c){ casados++; if(cart>0){ pj2SetStatus(c,'mb','Ativo'); comInv++; } }
+      else miss.push(r[nomeKey]); });
+    save(); renderPj2Matrix();
+    pj2BulkMsg(`<span style="color:var(--ok)">Mercado Bitcoin: ${comInv} cliente(s) com conta + investimento marcados <b>Ativo</b>.</span> <span style="color:var(--ink-soft)">${casados} casados por nome; ${miss.length} não encontrados na Base${miss.length?': '+miss.slice(0,8).map(esc).join(', ')+(miss.length>8?'…':''):''}.</span>`);
+  }catch(e){ console.error(e); pj2BulkMsg('<span style="color:var(--warn)">Erro ao ler: '+esc(e.message)+'</span>'); }
+}
+
+async function pj2ImportOpenFinance(ev){
+  const f = ev.target.files[0]; if(!f) return; ev.target.value = '';
+  try{
+    const rows = await pj2LerXlsx(f);
+    if(!rows.length){ pj2BulkMsg('<span style="color:var(--warn)">Planilha vazia.</span>'); return; }
+    const codKey = Object.keys(rows[0]).find(k=>/c[oó]d.*conta/i.test(k));
+    if(!codKey){ pj2BulkMsg('<span style="color:var(--warn)">Não encontrei a coluna "Cód. Conta".</span>'); return; }
+    const semOF = new Set();
+    rows.forEach(r=>{ const cod = String(r[codKey]||'').trim(); if(cod) semOF.add(cod); });
+    let sem=0, com=0, foraBase=0;
+    const naBase = new Set();
+    S.clientes.forEach(c=>{ if(!c.codigo) return; const cod = String(c.codigo).trim(); naBase.add(cod);
+      if(semOF.has(cod)){ pj2SetStatus(c,'openFinance','Sem permissão'); sem++; }
+      else { pj2SetStatus(c,'openFinance','Ativo'); com++; } });
+    semOF.forEach(cod=>{ if(!naBase.has(cod)) foraBase++; });
+    save(); renderPj2Matrix();
+    pj2BulkMsg(`<span style="color:var(--ok)">Open Finance: ${sem} sem permissão, ${com} marcados <b>Ativo</b> (não constam no relatório de "sem Open Finance").</span>` + (foraBase?` <span style="color:var(--ink-soft)">${foraBase} conta(s) do relatório não estão na Base.</span>`:''));
+  }catch(e){ console.error(e); pj2BulkMsg('<span style="color:var(--warn)">Erro ao ler: '+esc(e.message)+'</span>'); }
+}
+
+const PJ2_PLAN_CONCLUIDO = [
+  {codigo:'18008811', nome:'Carlos Augusto de Souza'},
+  {codigo:'2672591',  nome:'Clarice Pereira Vieira'},
+  {codigo:'5712348',  nome:'Ivania Lucia Silva Costa'},
+  {codigo:'2014558',  nome:'Vinicius Dutra Silva'},
+  {codigo:'3612157',  nome:'Alexandre Holland'},
+  {codigo:'7018836',  nome:'Patricia da Conceicao'},
+  {codigo:'2469700',  nome:'Rogerio Correa'},
+  {codigo:'2130112',  nome:'Fabio Henrique Rodrigues'},
+  {codigo:'17025800', nome:'Vinicius Pereira Ribeiro'},
+  {codigo:'8179978',  nome:'Marcio Calvo Tuleski'},
+  {codigo:'174035',   nome:'Matheus Suss'},
+  {codigo:'5666351',  nome:'Reinaldi Cezar Vieira'},
+  {codigo:'3495879',  nome:'Kelly Renata da Silva'},
+  {codigo:'2608145',  nome:'Clovis Polo Martinez'},
+  {codigo:'18168712', nome:'Miguel da Silva Santos'},
+  {codigo:'18606981', nome:'Helio Schebeuka'},
+  {codigo:'2713930',  nome:'Elcio da Luz Oesterreich'},
+  {codigo:'4926394',  nome:'Rafael Cesar Tieppo'},
+  {codigo:'18594016', nome:'Heline da Silva Schebeuka'},
+  {codigo:null,       nome:'Luciana Ribeiro'}
+];
+function pj2AplicarPlanejamento(){
+  const {byCod, byNome} = pj2MapaBase();
+  let ok=0, miss=[];
+  PJ2_PLAN_CONCLUIDO.forEach(p=>{
+    let c = p.codigo ? byCod[p.codigo] : null;
+    if(!c) c = byNome[pj2Norm(p.nome)];
+    if(c){ pj2SetStatus(c,'financialPlanning','Concluído'); ok++; } else miss.push(p.nome);
+  });
+  save(); renderPj2Matrix();
+  pj2BulkMsg(`<span style="color:var(--ok)">Financial Planning: ${ok} cliente(s) marcados como <b>Concluído</b>.</span>` + (miss.length?` <span style="color:var(--ink-soft)">Não encontrados na Base: ${miss.map(esc).join(', ')}.</span>`:''));
 }
 
 // ============================================================
