@@ -5626,7 +5626,7 @@ function raCategoria(familia){
   return 'Outros';
 }
 function raNum(s){ if(s==null) return 0; return parseFloat(String(s).trim().replace(/\./g,'').replace(',','.'))||0; }
-function raClienteBaseNome(codigo){ const c = S.clientes.find(x=>x.codigo && String(x.codigo)===String(codigo)); return c ? c.nome : null; }
+function raClienteBaseNome(codigo){ const c = S.clientes.find(x=>x.codigo && String(x.codigo)===String(codigo)); if(!c) return null; const n=(c.nome||'').trim(); return (n && !/^Cliente \d+$/.test(n)) ? n : null; }
 function raDetalheNome(det){ const d=(det||'').trim(); if(!d) return null; if(/^cliente\s+\d+/i.test(d)) return null; const nm=d.split(' - ')[0].trim(); return nm||null; }
 // Código do cliente: col Cod. Cliente se numérica; senão tenta extrair de "Cliente 12345 Ativo ..." no Detalhe (linhas de MB).
 function raCodigoCliente(codRaw, det){ if(/^\d+$/.test(codRaw)) return codRaw; const m=String(det||'').match(/cliente\s+(\d+)/i); return m ? m[1] : null; }
