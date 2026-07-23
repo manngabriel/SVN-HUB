@@ -2947,6 +2947,18 @@ th.num{text-align:right;}
 
   <!-- ================= PLANEJAMENTO DE RECEITA ================= -->
   <div class="view" id="view-planejamento">
+    <style>
+      #view-planejamento .subtabs{display:flex; gap:6px; margin-bottom:18px; border-bottom:1px solid var(--line);}
+      #view-planejamento .subtab{appearance:none; border:none; background:none; cursor:pointer; font-size:13px; font-weight:600; color:var(--ink-soft); padding:9px 14px; border-bottom:2px solid transparent; margin-bottom:-1px;}
+      #view-planejamento .subtab:hover{color:var(--ink);}
+      #view-planejamento .subtab.active{color:var(--amber); border-bottom-color:var(--amber);}
+    </style>
+    <div class="subtabs">
+      <button class="subtab active" id="planSub-pipeline" onclick="showPlanTab('pipeline')">Pipeline de Receita</button>
+      <button class="subtab" id="planSub-agio" onclick="showPlanTab('agio')">Ágio / Deságio</button>
+    </div>
+
+    <div id="planPanePipeline">
     <div class="grid c3" style="margin-bottom:18px;">
       <div class="kpi dark"><div class="l">Potencial total</div><div class="v" id="planPotencial">R$0</div><div class="s" id="planCount">0 linhas</div></div>
       <div class="kpi"><div class="l">Total realizado</div><div class="v" id="planRealizado">R$0</div><div class="s">Feito / Reservado + passiva</div></div>
@@ -3002,6 +3014,80 @@ th.num{text-align:right;}
       </table>
       </div>
     </div>
+    </div><!-- /planPanePipeline -->
+
+    <div id="planPaneAgio" style="display:none;">
+      <div class="card">
+        <div class="eyebrow">Importar tabela de ágio/deságio</div>
+        <div class="desc">Envie a planilha <b>Tabela com ágio/deságio por cliente e ativo</b> (.xlsx). Cruza cada ativo com a Base pelo código da conta. Reimportar substitui os dados.</div>
+        <div style="margin-top:12px; display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+          <input type="file" id="agioFile" accept=".xlsx,.xls" style="display:none" onchange="agioHandleFile(event)">
+          <button class="btn solid" onclick="document.getElementById('agioFile').click()">Selecionar arquivo .xlsx</button>
+          <span id="agioFileName" style="color:var(--ink-soft); font-size:13px;"></span>
+          <button class="btn ghost" id="agioLimpar" onclick="agioLimpar()" style="display:none;">Limpar</button>
+        </div>
+        <div id="agioImportStatus" style="margin-top:12px; font-size:13px;"></div>
+      </div>
+
+      <div id="agioEmpty" class="card" style="display:none;">
+        <div class="empty">Nenhuma tabela importada ainda. Selecione o arquivo .xlsx acima para começar.</div>
+      </div>
+
+      <div id="agioDash" style="display:none;">
+        <div class="grid c3" style="margin-bottom:18px;">
+          <div class="kpi dark"><div class="l">Ativos em deságio</div><div class="v" id="agioKpiDesQtd">0</div><div class="s" id="agioKpiDesRs">R$0</div></div>
+          <div class="kpi"><div class="l">Ativos em ágio</div><div class="v" id="agioKpiAgQtd">0</div><div class="s" id="agioKpiAgRs">R$0</div></div>
+          <div class="kpi"><div class="l">Resultado líquido</div><div class="v" id="agioKpiLiq">R$0</div><div class="s">ágio − deságio (visível)</div></div>
+        </div>
+
+        <div class="card">
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:14px;">
+            <div><h2>Ativos por ágio / deságio</h2><div class="desc" style="margin:0;">Deságio = ativo vale menos que a curva (custo de saída). Filtre por cliente, ativo ou faixa de %.</div></div>
+            <button class="btn ghost" onclick="exportAgioXLSX()">⬇ Exportar XLSX</button>
+          </div>
+
+          <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end; margin-bottom:14px;">
+            <div class="field" style="min-width:190px;"><label>Cliente</label>
+              <select id="agioFiltroCliente" onchange="renderAgio()"><option value="">Todos</option></select>
+            </div>
+            <div class="field" style="min-width:190px;"><label>Ativo</label>
+              <select id="agioFiltroAtivo" onchange="renderAgio()"><option value="">Todos</option></select>
+            </div>
+            <div class="field" style="min-width:150px;"><label>Situação</label>
+              <select id="agioFiltroTipo" onchange="renderAgio()">
+                <option value="desagio">Só deságio</option>
+                <option value="agio">Só ágio</option>
+                <option value="todos">Todos</option>
+              </select>
+            </div>
+            <div class="field" style="max-width:110px;"><label>% mínimo</label>
+              <input type="number" step="0.1" id="agioFiltroMin" placeholder="ex.: -5" oninput="renderAgio()">
+            </div>
+            <div class="field" style="max-width:110px;"><label>% máximo</label>
+              <input type="number" step="0.1" id="agioFiltroMax" placeholder="ex.: 0" oninput="renderAgio()">
+            </div>
+            <button class="btn ghost" onclick="agioResetFiltros()">Limpar filtros</button>
+          </div>
+          <div class="footer-note" style="margin:-4px 0 12px;">Faixa em % (deságio é negativo). Ex.: mínimo <b>-10</b> e máximo <b>-2</b> mostra deságio entre 2% e 10%.</div>
+
+          <div style="overflow-x:auto;">
+          <table id="tblAgio">
+            <thead><tr>
+              <th onclick="sortAgio('cliente')">Cliente</th>
+              <th onclick="sortAgio('ativo')">Ativo</th>
+              <th onclick="sortAgio('indexador')">Indexador</th>
+              <th onclick="sortAgio('vencimento')">Vencimento</th>
+              <th class="num" onclick="sortAgio('posicao')">Posição</th>
+              <th class="num" onclick="sortAgio('pct')">Ágio/Deságio %</th>
+              <th class="num" onclick="sortAgio('rs')">Ágio/Deságio R$</th>
+            </tr></thead>
+            <tbody id="agioBody"></tbody>
+          </table>
+          </div>
+          <div id="agioResumo" style="margin-top:10px; font-size:12px; color:var(--ink-soft);"></div>
+        </div>
+      </div>
+    </div><!-- /planPaneAgio -->
   </div>
 
   <!-- ================= PJ2 ================= -->
@@ -6483,6 +6569,216 @@ function exportPlanReceitaXLSX(){
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Pipeline de Receita');
   XLSX.writeFile(wb, 'pipeline_receita.xlsx');
+}
+
+// ================= ÁGIO / DESÁGIO =================
+const AGIO_LS_KEY = 'svnhub:agio:v1';
+let _agioRows = [];   // {conta, ativo, ticker, indexador, vencimento, posicao, flag, pct, rs}
+let agioSortKey = 'pct', agioSortDir = 1;   // pct asc = mais deságio no topo
+
+function agioLoadLS(){
+  try{ const raw = localStorage.getItem(AGIO_LS_KEY); _agioRows = raw ? (JSON.parse(raw)||[]) : []; }
+  catch(e){ _agioRows = []; }
+}
+function agioSaveLS(){ try{ localStorage.setItem(AGIO_LS_KEY, JSON.stringify(_agioRows)); }catch(e){} }
+
+function agioExcelDate(v){
+  if(v==null || v==='') return '';
+  if(typeof v==='number'){ const d=new Date(Math.round((v-25569)*86400*1000)); return d.toISOString().split('T')[0]; }
+  return String(v).split(' ')[0];
+}
+function agioFmtData(iso){
+  if(!iso) return '—';
+  const p = String(iso).split('-'); return p.length===3 ? `${p[2]}/${p[1]}/${p[0]}` : iso;
+}
+function agioSetStatus(msg, type){
+  const el = document.getElementById('agioImportStatus'); if(!el) return;
+  const col = type==='erro' ? 'var(--warn)' : type==='ok' ? 'var(--ok)' : 'var(--ink-soft)';
+  el.innerHTML = `<span style="color:${col}">${esc(msg)}</span>`;
+}
+function agioNomeCliente(conta){
+  const c = S.clientes.find(x=>x.codigo && String(x.codigo).trim()===String(conta).trim());
+  return c ? c.nome : null;
+}
+
+function agioHandleFile(e){
+  const file = e.target.files[0]; if(!file) return; e.target.value='';
+  document.getElementById('agioFileName').textContent = file.name;
+  agioSetStatus('Lendo arquivo...', 'info');
+  const reader = new FileReader();
+  reader.onload = function(ev){
+    try{
+      const wb = XLSX.read(ev.target.result, {type:'binary'});
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const json = XLSX.utils.sheet_to_json(ws, {defval:''});
+      if(!json.length){ agioSetStatus('Planilha vazia.', 'erro'); return; }
+      const keys = Object.keys(json[0]);
+      const find = re => keys.find(k=>re.test(k));
+      const kConta = find(/c[oó]d.*conta/i);
+      const kAtivo = find(/nome.*ativo/i) || find(/^ativo$/i);
+      const kTicker = find(/ticker/i);
+      const kIdx = find(/indexador/i);
+      const kVenc = find(/vencimento/i);
+      const kPos = find(/posi[çc][aã]o.*atual/i);
+      const kFlag = find(/flag|marca/i);
+      const kPct = keys.find(k=>/[aá]gio/i.test(k) && /%/.test(k));
+      const kRs = keys.find(k=>/[aá]gio/i.test(k) && /r\$/i.test(k));
+      if(!kConta || !kAtivo || !kPct){
+        agioSetStatus('Não encontrei as colunas esperadas (Cód. conta, Nome ativo, ágio/deságio %).', 'erro'); return;
+      }
+      _agioRows = json.map(r=>{
+        const pctRaw = parseFloat(String(r[kPct]).replace(',','.'));
+        const rsRaw  = kRs ? parseFloat(String(r[kRs]).replace(',','.')) : NaN;
+        return {
+          conta: String(r[kConta]||'').trim(),
+          ativo: String(r[kAtivo]||'').trim(),
+          ticker: kTicker ? String(r[kTicker]||'').trim() : '',
+          indexador: kIdx ? String(r[kIdx]||'').trim() : '',
+          vencimento: kVenc ? agioExcelDate(r[kVenc]) : '',
+          posicao: kPos ? (parseFloat(String(r[kPos]).replace(',','.'))||0) : 0,
+          flag: kFlag ? String(r[kFlag]||'').trim() : '',
+          pct: isFinite(pctRaw) ? pctRaw*100 : null,
+          rs: isFinite(rsRaw) ? rsRaw : 0
+        };
+      }).filter(r=>r.ativo && r.pct!=null);
+      agioSaveLS();
+      const des = _agioRows.filter(r=>r.pct<0).length;
+      agioSetStatus(`${_agioRows.length} ativos importados — ${des} em deságio.`, 'ok');
+      agioInitDash();
+    }catch(err){ agioSetStatus('Erro ao ler arquivo: '+err.message, 'erro'); }
+  };
+  reader.readAsBinaryString(file);
+}
+
+function agioLimpar(){
+  if(!confirm('Remover a tabela de ágio/deságio importada?')) return;
+  _agioRows = []; agioSaveLS(); agioInitDash();
+  document.getElementById('agioFileName').textContent = '';
+  agioSetStatus('Tabela removida.', 'info');
+}
+
+function agioInitDash(){
+  const has = _agioRows.length>0;
+  const btn = document.getElementById('agioLimpar'); if(btn) btn.style.display = has ? '' : 'none';
+  const emp = document.getElementById('agioEmpty'); if(emp) emp.style.display = has ? 'none' : 'block';
+  const dash = document.getElementById('agioDash'); if(dash) dash.style.display = has ? 'block' : 'none';
+  if(!has) return;
+  // opções de cliente (por conta) e ativo
+  const contas = {};
+  _agioRows.forEach(r=>{ if(!(r.conta in contas)) contas[r.conta] = agioNomeCliente(r.conta) || ('Conta '+r.conta); });
+  const cliSel = document.getElementById('agioFiltroCliente'), curCli = cliSel.value;
+  cliSel.innerHTML = '<option value="">Todos</option>' + Object.entries(contas)
+    .sort((a,b)=>String(a[1]).localeCompare(String(b[1])))
+    .map(([k,v])=>`<option value="${esc(k)}">${esc(v)}</option>`).join('');
+  cliSel.value = curCli;
+  const ativos = [...new Set(_agioRows.map(r=>r.ativo))].sort((a,b)=>a.localeCompare(b));
+  const atSel = document.getElementById('agioFiltroAtivo'), curAt = atSel.value;
+  atSel.innerHTML = '<option value="">Todos</option>' + ativos.map(a=>`<option value="${esc(a)}">${esc(a)}</option>`).join('');
+  atSel.value = curAt;
+  renderAgio();
+}
+
+function agioResetFiltros(){
+  document.getElementById('agioFiltroCliente').value = '';
+  document.getElementById('agioFiltroAtivo').value = '';
+  document.getElementById('agioFiltroTipo').value = 'desagio';
+  document.getElementById('agioFiltroMin').value = '';
+  document.getElementById('agioFiltroMax').value = '';
+  renderAgio();
+}
+
+function agioFiltrar(){
+  const cli = document.getElementById('agioFiltroCliente').value;
+  const at  = document.getElementById('agioFiltroAtivo').value;
+  const tipo = document.getElementById('agioFiltroTipo').value;
+  const minV = document.getElementById('agioFiltroMin').value;
+  const maxV = document.getElementById('agioFiltroMax').value;
+  const min = minV==='' ? null : parseFloat(minV);
+  const max = maxV==='' ? null : parseFloat(maxV);
+  return _agioRows.filter(r=>{
+    if(cli && r.conta!==cli) return false;
+    if(at && r.ativo!==at) return false;
+    if(tipo==='desagio' && !(r.pct<0)) return false;
+    if(tipo==='agio' && !(r.pct>0)) return false;
+    if(min!=null && isFinite(min) && r.pct<min) return false;
+    if(max!=null && isFinite(max) && r.pct>max) return false;
+    return true;
+  });
+}
+
+function sortAgio(k){
+  if(agioSortKey===k) agioSortDir*=-1; else { agioSortKey=k; agioSortDir=1; }
+  renderAgio();
+}
+
+function renderAgio(){
+  const body = document.getElementById('agioBody'); if(!body) return;
+  const arr = agioFiltrar();
+  const num = ['posicao','pct','rs'].includes(agioSortKey);
+  arr.sort((a,b)=>{
+    if(agioSortKey==='cliente'){
+      const na = agioNomeCliente(a.conta)||('Conta '+a.conta), nb = agioNomeCliente(b.conta)||('Conta '+b.conta);
+      return String(na).localeCompare(String(nb))*agioSortDir;
+    }
+    const va = a[agioSortKey], vb = b[agioSortKey];
+    if(num) return ((+va||0)-(+vb||0))*agioSortDir;
+    return String(va||'').localeCompare(String(vb||''))*agioSortDir;
+  });
+  let html='';
+  arr.forEach(r=>{
+    const nome = agioNomeCliente(r.conta);
+    const cliCell = nome ? esc(nome) : `<span style="color:var(--ink-soft)" title="Conta não está na Base de clientes">Conta ${esc(r.conta)}</span>`;
+    const col = r.pct<0 ? 'var(--warn)' : 'var(--ok)';
+    html += `<tr>
+      <td>${cliCell}</td>
+      <td>${esc(r.ativo)}</td>
+      <td>${esc(r.indexador||'—')}</td>
+      <td>${agioFmtData(r.vencimento)}</td>
+      <td class="num">${fmt(r.posicao)}</td>
+      <td class="num" style="color:${col}; font-weight:600;">${r.pct.toFixed(2)}%</td>
+      <td class="num" style="color:${col};">${fmt(r.rs)}</td>
+    </tr>`;
+  });
+  body.innerHTML = html || `<tr><td colspan="7" style="text-align:center; color:var(--ink-soft); padding:18px;">Nenhum ativo com esses filtros.</td></tr>`;
+
+  const des = arr.filter(r=>r.pct<0), ag = arr.filter(r=>r.pct>0);
+  const desRs = des.reduce((s,r)=>s+(+r.rs||0),0);
+  const agRs  = ag.reduce((s,r)=>s+(+r.rs||0),0);
+  document.getElementById('agioKpiDesQtd').textContent = des.length;
+  document.getElementById('agioKpiDesRs').textContent  = fmt(desRs);
+  document.getElementById('agioKpiAgQtd').textContent  = ag.length;
+  document.getElementById('agioKpiAgRs').textContent   = fmt(agRs);
+  document.getElementById('agioKpiLiq').textContent    = fmt(agRs + desRs);
+  document.getElementById('agioResumo').textContent = `${arr.length} ativo(s) exibidos de ${_agioRows.length} importados.`;
+}
+
+function exportAgioXLSX(){
+  const arr = agioFiltrar();
+  if(!arr.length){ alert('Nada para exportar com os filtros atuais.'); return; }
+  const data = arr.map(r=>({
+    'Cliente': agioNomeCliente(r.conta) || ('Conta '+r.conta),
+    'Cód. conta': r.conta,
+    'Ativo': r.ativo,
+    'Ticker': r.ticker||'',
+    'Indexador': r.indexador||'',
+    'Vencimento': agioFmtData(r.vencimento),
+    'Posição (R$)': r.posicao,
+    'Ágio/Deságio (%)': r.pct/100,
+    'Ágio/Deságio (R$)': r.rs
+  }));
+  const ws = XLSX.utils.json_to_sheet(data);
+  ws['!cols'] = [{wch:24},{wch:12},{wch:26},{wch:14},{wch:10},{wch:12},{wch:14},{wch:16},{wch:16}];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Ágio-Deságio');
+  XLSX.writeFile(wb, 'agio_desagio.xlsx');
+}
+
+function showPlanTab(t){
+  document.getElementById('planPanePipeline').style.display = t==='agio' ? 'none' : '';
+  document.getElementById('planPaneAgio').style.display     = t==='agio' ? 'block' : 'none';
+  document.getElementById('planSub-pipeline').classList.toggle('active', t!=='agio');
+  document.getElementById('planSub-agio').classList.toggle('active', t==='agio');
+  if(t==='agio') agioInitDash();
 }
 
 // ---- Detalhe expansível do cliente (Positivador + Diversificador + anotações) ----
@@ -12593,6 +12889,7 @@ async function positivadorCarregarTabela(){
 
 // Carrega tabela quando abre a view do positivador
 document.addEventListener('DOMContentLoaded', ()=>{
+  try{ agioLoadLS(); }catch(e){}
   const origShowView = window.showView;
   if(origShowView){
     window.showView = function(v){
