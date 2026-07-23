@@ -3048,10 +3048,12 @@ th.num{text-align:right;}
 
           <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end; margin-bottom:14px;">
             <div class="field" style="min-width:190px;"><label>Cliente</label>
-              <select id="agioFiltroCliente" onchange="renderAgio()"><option value="">Todos</option></select>
+              <input type="text" id="agioFiltroCliente" list="agioClienteList" placeholder="Buscar cliente…" autocomplete="off" oninput="renderAgio()">
+              <datalist id="agioClienteList"></datalist>
             </div>
             <div class="field" style="min-width:190px;"><label>Ativo</label>
-              <select id="agioFiltroAtivo" onchange="renderAgio()"><option value="">Todos</option></select>
+              <input type="text" id="agioFiltroAtivo" list="agioAtivoList" placeholder="Buscar ativo…" autocomplete="off" oninput="renderAgio()">
+              <datalist id="agioAtivoList"></datalist>
             </div>
             <div class="field" style="min-width:150px;"><label>Situação</label>
               <select id="agioFiltroTipo" onchange="renderAgio()">
@@ -6663,18 +6665,11 @@ function agioInitDash(){
   const emp = document.getElementById('agioEmpty'); if(emp) emp.style.display = has ? 'none' : 'block';
   const dash = document.getElementById('agioDash'); if(dash) dash.style.display = has ? 'block' : 'none';
   if(!has) return;
-  // opções de cliente (por conta) e ativo
-  const contas = {};
-  _agioRows.forEach(r=>{ if(!(r.conta in contas)) contas[r.conta] = agioNomeCliente(r.conta) || ('Conta '+r.conta); });
-  const cliSel = document.getElementById('agioFiltroCliente'), curCli = cliSel.value;
-  cliSel.innerHTML = '<option value="">Todos</option>' + Object.entries(contas)
-    .sort((a,b)=>String(a[1]).localeCompare(String(b[1])))
-    .map(([k,v])=>`<option value="${esc(k)}">${esc(v)}</option>`).join('');
-  cliSel.value = curCli;
+  // sugestões de cliente e ativo (datalist p/ busca)
+  const nomes = [...new Set(_agioRows.map(r=>agioNomeCliente(r.conta) || ('Conta '+r.conta)))].sort((a,b)=>String(a).localeCompare(String(b)));
+  document.getElementById('agioClienteList').innerHTML = nomes.map(n=>`<option value="${esc(n)}"></option>`).join('');
   const ativos = [...new Set(_agioRows.map(r=>r.ativo))].sort((a,b)=>a.localeCompare(b));
-  const atSel = document.getElementById('agioFiltroAtivo'), curAt = atSel.value;
-  atSel.innerHTML = '<option value="">Todos</option>' + ativos.map(a=>`<option value="${esc(a)}">${esc(a)}</option>`).join('');
-  atSel.value = curAt;
+  document.getElementById('agioAtivoList').innerHTML = ativos.map(a=>`<option value="${esc(a)}"></option>`).join('');
   renderAgio();
 }
 
@@ -6687,17 +6682,18 @@ function agioResetFiltros(){
   renderAgio();
 }
 
+function agioNorm(s){ return String(s==null?'':s).normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().trim(); }
 function agioFiltrar(){
-  const cli = document.getElementById('agioFiltroCliente').value;
-  const at  = document.getElementById('agioFiltroAtivo').value;
+  const cli = agioNorm(document.getElementById('agioFiltroCliente').value);
+  const at  = agioNorm(document.getElementById('agioFiltroAtivo').value);
   const tipo = document.getElementById('agioFiltroTipo').value;
   const minV = document.getElementById('agioFiltroMin').value;
   const maxV = document.getElementById('agioFiltroMax').value;
   const min = minV==='' ? null : parseFloat(minV);
   const max = maxV==='' ? null : parseFloat(maxV);
   return _agioRows.filter(r=>{
-    if(cli && r.conta!==cli) return false;
-    if(at && r.ativo!==at) return false;
+    if(cli){ const nome = agioNorm(agioNomeCliente(r.conta) || ('Conta '+r.conta)); if(!nome.includes(cli) && !String(r.conta).includes(cli)) return false; }
+    if(at && !agioNorm(r.ativo).includes(at)) return false;
     if(tipo==='desagio' && !(r.pct<0)) return false;
     if(tipo==='agio' && !(r.pct>0)) return false;
     if(min!=null && isFinite(min) && r.pct<min) return false;
