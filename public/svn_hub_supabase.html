@@ -3024,6 +3024,18 @@ th.num{text-align:right;}
           <button class="btn ghost" onclick="exportPj2XLSX()">⬇ Exportar XLSX</button>
         </div>
       </div>
+      <div style="margin-bottom:10px;">
+        <button class="btn ghost tiny" id="pj2FiltroToggle" onclick="pj2ToggleFiltroPanel()">⌕ Filtros ▸</button>
+        <span id="pj2FiltroResumo" style="margin-left:10px; font-size:12px; color:var(--amber); font-weight:600;"></span>
+        <div id="pj2FiltroPanel" style="display:none; margin-top:10px; padding:12px 14px; border:1px solid var(--line); border-radius:10px; background:var(--cream);">
+          <div class="desc" style="margin:0 0 10px;">Marque os status que quer encontrar. Dentro de um produto os status somam (qualquer um serve); entre produtos o filtro é combinado (todos precisam bater). Ex.: <b>Financial Planning</b> = Não iniciado + Iniciado e <b>Mercado Bitcoin</b> = Inativo → clientes sem planejamento e sem MB.</div>
+          <div id="pj2FiltroGrid" style="display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:14px;"></div>
+          <div style="margin-top:12px; display:flex; gap:10px; align-items:center;">
+            <button class="btn ghost tiny" onclick="pj2LimparFiltros()">Limpar filtros</button>
+            <span id="pj2FiltroCount" style="font-size:12px; color:var(--ink-soft);"></span>
+          </div>
+        </div>
+      </div>
       <div id="pj2MatrixWrap">
         <table id="tblPj2Matrix"><thead id="pj2MatrixHead"></thead><tbody id="pj2MatrixBody"></tbody></table>
       </div>
@@ -5595,6 +5607,7 @@ const RA_CAT_COLORS = ['#BE7F49','#4e7a5a','#8C5A34','#a4552e','#c9a15f','#5C534
 let _raSel = { mes:null, dim:'cat', sortDir:'desc' };
 let _raAgg = null;
 let _raPending = null;
+let _raLastExcl = {n:0, val:0};
 
 function raCategoria(familia){
   const f = (familia||'').toUpperCase();
@@ -5615,6 +5628,8 @@ function raCategoria(familia){
 function raNum(s){ if(s==null) return 0; return parseFloat(String(s).trim().replace(/\./g,'').replace(',','.'))||0; }
 function raClienteBaseNome(codigo){ const c = S.clientes.find(x=>x.codigo && String(x.codigo)===String(codigo)); return c ? c.nome : null; }
 function raDetalheNome(det){ const d=(det||'').trim(); if(!d) return null; if(/^cliente\s+\d+/i.test(d)) return null; const nm=d.split(' - ')[0].trim(); return nm||null; }
+// Código do cliente: col Cod. Cliente se numérica; senão tenta extrair de "Cliente 12345 Ativo ..." no Detalhe (linhas de MB).
+function raCodigoCliente(codRaw, det){ if(/^\d+$/.test(codRaw)) return codRaw; const m=String(det||'').match(/cliente\s+(\d+)/i); return m ? m[1] : null; }
 function raMesSort(a,b){ const pa=a.split('-'), pb=b.split('-'); return (pa[1]+pa[0]).localeCompare(pb[1]+pb[0]); }
 function raMesLabel(m){ const p=String(m).split('-'); const nomes=['','jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez']; return (nomes[+p[0]]||p[0])+'/'+(p[1]||''); }
 function raShortName(n){ n=String(n||'').trim(); const p=n.split(/\s+/); return p.length>2 ? p[0]+' '+p[1] : n; }
@@ -5631,33 +5646,41 @@ function raParseCSV(text){
   const iDet  = header.findIndex(h=>h.toLowerCase()==='detalhe');
   if(iComp<0 || iEscr<0){ throw new Error('Cabeçalho não reconhecido (faltam colunas Competência / Escrit. Vl. Comissão).'); }
   const reports = {};
+  const excl = {n:0, val:0};
   for(let li=1; li<lines.length; li++){
     const c = lines[li].split(';');
     const comp = (c[iComp]||'').trim(); if(!comp) continue;
     const receita = raNum(c[iEscr]); if(!receita) continue;
-    const cat = raCategoria(iFam>=0 ? c[iFam] : '');
-    const origem = (iOrig>=0 ? (c[iOrig]||'').trim() : '') || '—';
     const codRaw = (iCod>=0 ? (c[iCod]||'').trim() : '');
     const det = iDet>=0 ? (c[iDet]||'') : '';
+    // Custos administrativos (não são receita): plano dentário, Wellhub etc.
+    if(/dent[aá]rio|wellhub|gympass/i.test(det)) continue;
+    // Resolve o NOME do cliente. Código numérico só vale se cruzar com a Base
+    // (senão é ex-cliente ou o Detalhe é o nome do fundo, não da pessoa → exclui).
     let key, label;
-    if(/^\d+$/.test(codRaw)){
-      key = 'c:'+codRaw;
-      label = raClienteBaseNome(codRaw) || raDetalheNome(det) || ('Cliente '+codRaw);
+    const codCli = raCodigoCliente(codRaw, det);
+    if(codCli){
+      const nm = raClienteBaseNome(codCli);      // código só vale se cruzar com a Base
+      if(!nm){ excl.n++; excl.val += receita; continue; }   // ex-cliente → exclui
+      key = 'c:'+codCli; label = nm;
     } else {
-      const nm = raDetalheNome(det);
-      if(nm){ key='n:'+nm.toLowerCase(); label=nm; }
-      else { key='k:'+(codRaw||'sem'); label = codRaw || 'Sem identificação'; }
+      const nm = raDetalheNome(det);             // corporate/consórcio/seguro: nome no Detalhe
+      if(!nm){ excl.n++; excl.val += receita; continue; }
+      key = 'n:'+nm.toLowerCase(); label = nm;
     }
+    const cat = raCategoria(iFam>=0 ? c[iFam] : '');
+    const origem = (iOrig>=0 ? (c[iOrig]||'').trim() : '') || '—';
     const r = reports[comp] || (reports[comp] = {total:0, nLinhas:0, byCat:{}, byOrigem:{}, byClient:{}});
     r.total += receita; r.nLinhas++;
     r.byCat[cat] = (r.byCat[cat]||0) + receita;
     r.byOrigem[origem] = (r.byOrigem[origem]||0) + receita;
     const cl = r.byClient[key] || (r.byClient[key] = {label, receita:0, cats:{}});
-    if(label && !/^Cliente\s+\d+$/.test(label)) cl.label = label;
+    cl.label = label;
     cl.receita += receita;
     cl.cats[cat] = (cl.cats[cat]||0) + receita;
   }
   Object.keys(reports).forEach(k=>{ const r=reports[k]; r.nClientes = Object.keys(r.byClient).length; r.importedAt = Date.now(); });
+  _raLastExcl = excl;
   return reports;
 }
 
@@ -5818,9 +5841,10 @@ function raHandleFile(ev){
       const resumo = comps.map(c=>`${raMesLabel(c)}: ${fmt(parsed[c].total)} · ${parsed[c].nClientes} clientes`).join(' &nbsp;·&nbsp; ');
       const existentes = comps.filter(c=>S.receitaReports && S.receitaReports[c]);
       const aviso = existentes.length ? `<div style="color:var(--warn); margin-top:6px;">Já existe dado para ${existentes.map(raMesLabel).join(', ')} — importar substitui.</div>` : '';
+      const ex = _raLastExcl && _raLastExcl.n ? `<div style="color:var(--ink-soft); margin-top:6px;">${_raLastExcl.n} lançamento(s) ignorados (clientes fora da Base + custos como plano dentário/Wellhub): ${fmt(_raLastExcl.val)}.</div>` : '';
       _raPending = parsed;
       status.innerHTML = `<div style="padding:10px 12px; background:var(--cream-2); border-radius:9px;">
-        <b>${comps.length} mês(es) no arquivo.</b> ${resumo}${aviso}
+        <b>${comps.length} mês(es) no arquivo.</b> ${resumo}${aviso}${ex}
         <div style="margin-top:10px;"><button class="btn solid tiny" onclick="raConfirmImport()">Importar</button></div>
       </div>`;
     }catch(e){ console.error(e); status.innerHTML = '<div style="color:var(--warn);">Erro ao ler: '+esc(e.message)+'</div>'; }
@@ -6754,9 +6778,12 @@ function renderPj2Matrix(){
   head.innerHTML = '<tr><th>Cliente</th>' + PJ2_PRODUTOS.map(p=>`<th>${esc(p.label)}</th>`).join('') + '</tr>';
   const q = (document.getElementById('pj2Busca')?.value||'').trim().toLowerCase();
   const arr = S.clientes.filter(clienteNomeado).filter(c=>{
-    if(!q) return true;
-    return (c.nome||'').toLowerCase().includes(q) || (c.codigo && String(c.codigo).includes(q));
+    if(q && !((c.nome||'').toLowerCase().includes(q) || (c.codigo && String(c.codigo).includes(q)))) return false;
+    return pj2PassaFiltros(c);
   }).sort((a,b)=>(a.nome||'').localeCompare(b.nome||''));
+  const nFiltros = Object.keys(_pj2Filtros).length;
+  const resumo = document.getElementById('pj2FiltroResumo'); if(resumo) resumo.textContent = nFiltros ? (arr.length+' cliente(s) · '+nFiltros+' filtro(s) ativo(s)') : '';
+  const cnt = document.getElementById('pj2FiltroCount'); if(cnt) cnt.textContent = arr.length+' cliente(s) correspondem';
   let html='';
   arr.forEach(c=>{
     html += '<tr><td>'+esc(c.nome)+'</td>';
@@ -6887,6 +6914,46 @@ function pj2AplicarPlanejamento(){
   save(); renderPj2Matrix();
   pj2BulkMsg(`<span style="color:var(--ok)">Financial Planning: ${ok} cliente(s) marcados como <b>Concluído</b>.</span>` + (miss.length?` <span style="color:var(--ink-soft)">Não encontrados na Base: ${miss.map(esc).join(', ')}.</span>`:''));
 }
+
+// ---- PJ2: filtro multi-escolha da matriz ----
+let _pj2Filtros = {};          // { key: [statusPermitidos] }  — OR dentro, AND entre produtos
+let _pj2FiltroAberto = false;
+function pj2PassaFiltros(c){
+  for(const key in _pj2Filtros){
+    const allow = _pj2Filtros[key];
+    if(!allow || !allow.length) continue;
+    if(!allow.includes(pj2StatusCliente(c, key))) return false;
+  }
+  return true;
+}
+function pj2ToggleFiltroPanel(){
+  _pj2FiltroAberto = !_pj2FiltroAberto;
+  const panel = document.getElementById('pj2FiltroPanel');
+  const btn = document.getElementById('pj2FiltroToggle');
+  if(panel) panel.style.display = _pj2FiltroAberto ? '' : 'none';
+  if(btn) btn.innerHTML = '⌕ Filtros ' + (_pj2FiltroAberto ? '▾' : '▸');
+  if(_pj2FiltroAberto) renderPj2Filtros();
+}
+function renderPj2Filtros(){
+  const grid = document.getElementById('pj2FiltroGrid'); if(!grid) return;
+  grid.innerHTML = PJ2_PRODUTOS.map(p=>{
+    const sel = _pj2Filtros[p.key] || [];
+    const boxes = p.opts.map(o=>`<label class="check-row" style="padding:2px 0; font-size:12.5px;">
+      <input type="checkbox" value="${esc(o)}" ${sel.includes(o)?'checked':''} onchange="pj2ToggleFiltro('${esc(p.key)}', this.value, this.checked)">${esc(o)}</label>`).join('');
+    return `<div><div style="font-weight:600; font-size:11.5px; text-transform:uppercase; letter-spacing:.05em; margin-bottom:5px; color:${sel.length?'var(--amber)':'var(--ink-soft)'};">${esc(p.label)}</div>${boxes}</div>`;
+  }).join('');
+}
+function pj2ToggleFiltro(key, val, checked){
+  if(!_pj2Filtros[key]) _pj2Filtros[key] = [];
+  const arr = _pj2Filtros[key];
+  const i = arr.indexOf(val);
+  if(checked && i < 0) arr.push(val);
+  if(!checked && i >= 0) arr.splice(i, 1);
+  if(!arr.length) delete _pj2Filtros[key];
+  renderPj2Filtros();
+  renderPj2Matrix();
+}
+function pj2LimparFiltros(){ _pj2Filtros = {}; renderPj2Filtros(); renderPj2Matrix(); }
 
 // ============================================================
 // CALCULADORA FEE FIXO
